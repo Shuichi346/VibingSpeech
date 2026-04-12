@@ -2,9 +2,6 @@
 
 ## [2026-04-12] Refactor Session — Dead Code Cleanup
 
-### Unused Files Deleted
-- README_jp.md — Placeholder file containing only "old"; no actual Japanese documentation
-
 ### Unused Imports Removed
 - Sources/VibingSpeech/Audio/TranscriptionEngine.swift — `import MLX` (no MLX symbols used directly)
 
