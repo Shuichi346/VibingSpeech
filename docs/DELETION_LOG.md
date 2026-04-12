@@ -28,7 +28,7 @@
 
 ### Testing
 - [O] `swift build -c release` passes
-- [ ] `make build && make run` launches correctly
-- [ ] Menu bar icon visible, hotkey works
-- [ ] Recording → transcription → paste flow verified
-- [ ] Hotwords and history screens functional
+- [O] `make build && make run` launches correctly
+- [O] Menu bar icon visible, hotkey works
+- [O] Recording → transcription → paste flow verified
+- [O] Hotwords and history screens functional
