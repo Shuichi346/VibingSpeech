@@ -1,16 +1,36 @@
+# ============================================
+# VibingSpeech .gitignore
+# ============================================
+
+# ------ Swift Package Manager ------
 /.build
 .swiftpm/
+Package.pins
+
+# ------ Xcode ------
 *.xcodeproj/
+*.xcworkspace/
 xcuserdata/
 DerivedData/
-.DS_Store
-Thumbs.db
-.vscode/launch.json
-node_modules/
-/.opencode
-UI-image/UI1.png
-UI-image/UI2.png
-UI-image/UI3.png
-UI-image/UI4.png
-AGENTS.md
+*.hmap
+
+# ------ Build artifacts ------
+*.ipa
+*.dSYM
+*.dSYM.zip
 /VibingSpeech.app
+
+# ------ macOS ------
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# ------ Editors / IDEs ------
+.vscode/launch.json
+/.opencode
+
+# ------ Project-specific ------
+UI-image/
+AGENTS.md
