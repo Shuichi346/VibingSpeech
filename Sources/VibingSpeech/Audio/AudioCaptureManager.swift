@@ -6,14 +6,14 @@
 //  Copyright © 2026 Shuichi. All rights reserved.
 //
 
-import AVFoundation
+@preconcurrency import AVFoundation
 import Observation
 import CoreAudio
 
-@Observable final class AudioCaptureManager {
+@Observable final class AudioCaptureManager: @unchecked Sendable {
     private let audioEngine = AVAudioEngine()
     private(set) var isRecording = false
-    private(set) var audioLevel: Float = 0.0
+    @MainActor private(set) var audioLevel: Float = 0.0
     private var audioBuffer: [Float] = []
     private let targetSampleRate: Double = 16000.0
     private let lock = NSLock()
@@ -26,23 +26,27 @@ import CoreAudio
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
         // Create converter to 16kHz mono Float32
-        let outputFormat = AVAudioFormat(
+        guard let outputFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: targetSampleRate,
             channels: 1,
             interleaved: false
-        )!
+        ) else {
+            throw NSError(domain: "AudioCaptureManager", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to create output audio format"])
+        }
 
         converter = AVAudioConverter(from: inputFormat, to: outputFormat)
 
-        // Install tap with nil format to use engine's default format
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] buffer, time in
-            guard let self = self else { return }
+        let targetSampleRate = self.targetSampleRate
 
+        // Install tap with nil format to use engine's default format
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] buffer, _ in
+            guard let self = self else { return }
             guard let converter = self.converter else { return }
 
             let capacity = AVAudioFrameCount(
-                Double(buffer.frameLength) * self.targetSampleRate / inputFormat.sampleRate
+                Double(buffer.frameLength) * targetSampleRate / inputFormat.sampleRate
             )
             guard let convertedBuffer = AVAudioPCMBuffer(
                 pcmFormat: outputFormat,
@@ -50,9 +54,10 @@ import CoreAudio
             ) else { return }
 
             var error: NSError?
+            let inputBuffer = buffer
             converter.convert(to: convertedBuffer, error: &error) { _, status in
                 status.pointee = .haveData
-                return buffer
+                return inputBuffer
             }
 
             if let error = error {
@@ -72,25 +77,29 @@ import CoreAudio
             self.lock.unlock()
 
             // Calculate RMS level
-            let rms = sqrt(samples.reduce(0) { $0 + $1 * $1 } / Float(samples.count))
+            let rms = sqrt(samples.reduce(0) { $0 + $1 * $1 } / Float(max(samples.count, 1)))
             let normalizedLevel = min(max(rms * 5.0, 0.0), 1.0)
 
-            Task { @MainActor in
-                self.audioLevel = normalizedLevel
+            Task { @MainActor [weak self] in
+                self?.audioLevel = normalizedLevel
             }
         }
 
         audioEngine.prepare()
         try audioEngine.start()
         isRecording = true
-        audioLevel = 0.0
+        Task { @MainActor [weak self] in
+            self?.audioLevel = 0.0
+        }
     }
 
     func stopRecording() -> [Float] {
         audioEngine.inputNode.removeTap(onBus: 0)
         audioEngine.stop()
         isRecording = false
-        audioLevel = 0.0
+        Task { @MainActor [weak self] in
+            self?.audioLevel = 0.0
+        }
 
         lock.lock()
         let buffer = audioBuffer
@@ -104,7 +113,9 @@ import CoreAudio
         audioEngine.inputNode.removeTap(onBus: 0)
         audioEngine.stop()
         isRecording = false
-        audioLevel = 0.0
+        Task { @MainActor [weak self] in
+            self?.audioLevel = 0.0
+        }
 
         lock.lock()
         audioBuffer.removeAll()
@@ -164,26 +175,28 @@ import CoreAudio
 
             guard status == noErr, streamSize > 0 else { continue }
 
-            // Get device name
+            // Get device name using CFString properly
             var nameAddress = AudioObjectPropertyAddress(
                 mSelector: kAudioObjectPropertyName,
                 mScope: kAudioObjectPropertyScopeGlobal,
                 mElement: kAudioObjectPropertyElementMain
             )
 
-            var name: CFString?
-            var nameSize = UInt32(MemoryLayout<CFString>.size)
+            var nameSize = UInt32(MemoryLayout<CFString?>.size)
+            var cfName: CFString? = nil
 
-            status = AudioObjectGetPropertyData(
-                deviceID,
-                &nameAddress,
-                0,
-                nil,
-                &nameSize,
-                &name
-            )
+            status = withUnsafeMutablePointer(to: &cfName) { ptr in
+                AudioObjectGetPropertyData(
+                    deviceID,
+                    &nameAddress,
+                    0,
+                    nil,
+                    &nameSize,
+                    ptr
+                )
+            }
 
-            guard status == noErr, let deviceName = name as String? else { continue }
+            guard status == noErr, let deviceName = cfName as String? else { continue }
 
             microphones.append((id: "\(deviceID)", name: deviceName))
         }

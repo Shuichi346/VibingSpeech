@@ -10,10 +10,10 @@ import AppKit
 import CoreGraphics
 import Observation
 
-@Observable final class GlobalHotkeyManager {
-    var onHotkeyDown: (() -> Void)?
-    var onHotkeyUp: (() -> Void)?
-    var onEscapePressed: (() -> Void)?
+@Observable final class GlobalHotkeyManager: @unchecked Sendable {
+    @MainActor var onHotkeyDown: (() -> Void)?
+    @MainActor var onHotkeyUp: (() -> Void)?
+    @MainActor var onEscapePressed: (() -> Void)?
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -36,7 +36,7 @@ import Observation
             place: .headInsertEventTap,
             options: .listenOnly,
             eventsOfInterest: eventMask,
-            callback: { proxy, type, event, userInfo in
+            callback: { _, type, event, userInfo in
                 guard let userInfo = userInfo else { return Unmanaged.passRetained(event) }
                 let manager = Unmanaged<GlobalHotkeyManager>.fromOpaque(userInfo).takeUnretainedValue()
                 manager.handleEvent(type: type, event: event)
@@ -85,12 +85,10 @@ import Observation
                 let isControlPressed = flags.contains(.maskControl)
 
                 let isHotkeyActive: Bool
-                if hotkeyCode == KeyCode.rightOption.rawValue || hotkeyCode == KeyCode.leftControl.rawValue {
-                    if hotkeyCode == KeyCode.rightOption.rawValue {
-                        isHotkeyActive = isOptionPressed
-                    } else {
-                        isHotkeyActive = isControlPressed
-                    }
+                if hotkeyCode == KeyCode.rightOption.rawValue {
+                    isHotkeyActive = isOptionPressed
+                } else if hotkeyCode == KeyCode.leftControl.rawValue {
+                    isHotkeyActive = isControlPressed
                 } else {
                     isHotkeyActive = false
                 }
@@ -98,21 +96,21 @@ import Observation
                 if isHotkeyActive && !isHotkeyHeld {
                     isHotkeyHeld = true
                     hotkeyPressTime = Date()
-                    Task { @MainActor in
-                        self.onHotkeyDown?()
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onHotkeyDown?()
                     }
                 } else if !isHotkeyActive && isHotkeyHeld {
                     isHotkeyHeld = false
-                    Task { @MainActor in
-                        self.onHotkeyUp?()
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onHotkeyUp?()
                     }
                 }
             }
         } else if type == .keyDown {
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
             if keyCode == KeyCode.escape.rawValue {
-                Task { @MainActor in
-                    self.onEscapePressed?()
+                DispatchQueue.main.async { [weak self] in
+                    self?.onEscapePressed?()
                 }
             }
         }

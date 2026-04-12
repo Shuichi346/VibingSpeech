@@ -11,7 +11,7 @@ import Observation
 
 @MainActor
 @Observable final class AppState {
-    enum RecordingState {
+    enum RecordingState: Sendable {
         case idle
         case recording
         case transcribing
@@ -59,18 +59,15 @@ import Observation
 
     private func setupHotkeyCallbacks() {
         hotkeyManager.onHotkeyDown = { [weak self] in
-            guard let self = self else { return }
-            self.handleHotkeyDown()
+            self?.handleHotkeyDown()
         }
 
         hotkeyManager.onHotkeyUp = { [weak self] in
-            guard let self = self else { return }
-            self.handleHotkeyUp()
+            self?.handleHotkeyUp()
         }
 
         hotkeyManager.onEscapePressed = { [weak self] in
-            guard let self = self else { return }
-            self.handleEscapePressed()
+            self?.handleEscapePressed()
         }
     }
 
@@ -125,21 +122,24 @@ import Observation
         recordingState = .transcribing
         onRecordingStateChanged?(.transcribing)
 
+        let pressedAt = hotkeyPressedAt
+        let polishEnabled = settings.textPolishEnabled
+        let currentVariant = transcriptionEngine.currentVariant ?? .defaultVariant
+
         Task { [weak self] in
             guard let self = self else { return }
 
             let text = self.transcriptionEngine.transcribe(audio: audioSamples)
 
             if !text.isEmpty {
-                // Apply text polish if enabled
-                let processedText = self.settings.textPolishEnabled ? self.polishText(text) : text
+                let processedText = polishEnabled ? self.polishText(text) : text
 
                 TextInsertionService.insertText(processedText)
 
                 let record = TranscriptionRecord(
                     text: processedText,
-                    durationSeconds: Date().timeIntervalSince(self.hotkeyPressedAt ?? Date()),
-                    modelVariant: self.transcriptionEngine.currentVariant ?? .defaultVariant
+                    durationSeconds: Date().timeIntervalSince(pressedAt ?? Date()),
+                    modelVariant: currentVariant
                 )
                 self.history.add(record)
                 self.history.pruneIfNeeded(retention: self.settings.historyRetention)

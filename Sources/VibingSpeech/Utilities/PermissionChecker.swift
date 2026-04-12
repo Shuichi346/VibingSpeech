@@ -16,7 +16,8 @@ enum PermissionChecker {
 
     static func requestAccessibilityIfNeeded() {
         if !AXIsProcessTrusted() {
-            let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true]
+            let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+            let options = [key: true] as CFDictionary
             AXIsProcessTrustedWithOptions(options)
         }
     }
