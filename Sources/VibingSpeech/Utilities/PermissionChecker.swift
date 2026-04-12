@@ -25,8 +25,4 @@ enum PermissionChecker {
     static func requestMicrophoneAccess() async -> Bool {
         await AVCaptureDevice.requestAccess(for: .audio)
     }
-
-    static var isMicrophoneGranted: Bool {
-        AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-    }
 }

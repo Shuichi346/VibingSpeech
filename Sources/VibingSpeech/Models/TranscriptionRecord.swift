@@ -16,6 +16,18 @@ struct TranscriptionRecord: Codable, Identifiable, Equatable {
     let durationSeconds: Double
     let modelVariant: ASRModelVariant
 
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy/MM/dd"
+        return formatter
+    }()
+
     init(
         id: UUID = UUID(),
         text: String,
@@ -43,9 +55,7 @@ struct TranscriptionRecord: Codable, Identifiable, Equatable {
     }
 
     var formattedTime: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: timestamp)
+        Self.timeFormatter.string(from: timestamp)
     }
 
     var formattedDate: String {
@@ -55,9 +65,7 @@ struct TranscriptionRecord: Codable, Identifiable, Equatable {
         } else if calendar.isDateInYesterday(timestamp) {
             return "Yesterday"
         } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy/MM/dd"
-            return formatter.string(from: timestamp)
+            return Self.dateFormatter.string(from: timestamp)
         }
     }
 }

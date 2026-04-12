@@ -9,7 +9,7 @@
 import Foundation
 import Observation
 import Qwen3ASR
-import MLX
+// import MLX
 
 @Observable @MainActor final class TranscriptionEngine {
     private var model: Qwen3ASRModel?
@@ -54,11 +54,5 @@ import MLX
 
         let result = model.transcribe(audio: audio, sampleRate: sampleRate)
         return result.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-    }
-
-    func unloadModel() {
-        model = nil
-        isModelLoaded = false
-        currentVariant = nil
     }
 }

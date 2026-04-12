@@ -19,8 +19,6 @@ import Observation
     private var runLoopSource: CFRunLoopSource?
     private var hotkeyCode: UInt16 = KeyCode.rightOption.rawValue
     private var isHotkeyHeld = false
-    private var hotkeyPressTime: Date?
-    private let longPressThreshold: TimeInterval = 0.3
 
     init() {}
 
@@ -95,7 +93,6 @@ import Observation
 
                 if isHotkeyActive && !isHotkeyHeld {
                     isHotkeyHeld = true
-                    hotkeyPressTime = Date()
                     DispatchQueue.main.async { [weak self] in
                         self?.onHotkeyDown?()
                     }
