@@ -9,6 +9,7 @@
 import Foundation
 import Observation
 import Qwen3ASR
+import MLX
 
 @Observable @MainActor final class TranscriptionEngine {
     private var model: Qwen3ASRModel?
