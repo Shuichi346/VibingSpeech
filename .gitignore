@@ -2,3 +2,6 @@
 Package.resolved
 .vscode/launch.json
 /UI-image
+node_modules/
+/.opencode
+AGENTS.md
