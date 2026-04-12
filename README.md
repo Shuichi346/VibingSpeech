@@ -17,10 +17,40 @@ Fully on-device macOS voice input app. Global hotkey → record → transcribe (
 
 ## Requirements
 
-- macOS 15.0+ (Sonoma)
+- macOS 26.0+ (Tahoe)
 - Apple Silicon (M1 or later)
-- Xcode 15+ / Command Line Tools
-- Swift 5.9+
+- Xcode 26+ / Command Line Tools (with Swift 6.2)
+- **Metal Toolchain** (see [Metal Toolchain Setup](#metal-toolchain-setup) below)
+
+## Metal Toolchain Setup
+
+Starting with Xcode 26, the **Metal Toolchain is no longer bundled with Xcode** and must be installed separately. VibingSpeech depends on MLX Swift, which requires Metal shaders to be compiled at build time. Without the Metal Toolchain, the build will fail.
+
+**Install via Xcode UI:**
+
+1. Open Xcode → Settings → Components
+2. Find **Metal Toolchain** under "Other Components"
+3. Click **Get** to download and install
+
+**Install via command line:**
+
+```bash
+xcodebuild -downloadComponent metalToolchain
+```
+
+To verify the installation:
+
+```bash
+xcrun metal --version
+```
+
+If you see a version number (e.g., `metal version 32.x.x`), the toolchain is ready.
+
+> **Note:** On some Xcode 26 versions, the toolchain may not register correctly after download. If you still get errors after installing, try:
+> ```bash
+> xcodebuild -downloadComponent metalToolchain -exportPath /tmp/MetalExport/
+> xcodebuild -importComponent metalToolchain -importPath /tmp/MetalExport/*.exportedBundle
+> ```
 
 ## Build & Run
 
@@ -31,7 +61,19 @@ make build
 make run
 ```
 
-First launch will automatically download the selected ASR model (≈1GB for default model).
+`make build` compiles the Swift package and then builds the MLX Metal shader library (`mlx.metallib`). The shader build is cached and only recompiles when source files change.
+
+To create a standalone `.app` bundle:
+
+```bash
+make app
+open VibingSpeech.app
+
+# Or install to /Applications
+cp -r VibingSpeech.app /Applications/
+```
+
+First launch will automatically download the selected ASR model (~1 GB for the default 0.6B model).
 
 ## Permissions
 
@@ -44,7 +86,7 @@ You will be prompted to grant these permissions on first launch. If you miss the
 
 ## How to Use
 
-1. Launch the app - you'll see a microphone icon in your menu bar
+1. Launch the app — you'll see a microphone icon in your menu bar
 2. **Hold mode:** Press and hold the Right Option key while speaking, release when done
 3. **Toggle mode:** Short press Right Option to start recording, press again to stop
 4. **Cancel recording:** Press Esc at any time during recording
@@ -59,17 +101,38 @@ You will be prompted to grant these permissions on first launch. If you miss the
 
 ## Troubleshooting
 
-### Metal shader error on build
-```
-xcodebuild -downloadComponent MetalToolchain
+### Metal shader build fails
+
+Make sure the Metal Toolchain is installed (see [Metal Toolchain Setup](#metal-toolchain-setup)):
+
+```bash
+xcodebuild -downloadComponent metalToolchain
 ```
 
+If the toolchain is installed but `xcrun metal` still fails, try restarting your terminal or selecting the correct Xcode:
+
+```bash
+sudo xcode-select -s /Applications/Xcode.app
+```
+
+### `Failed to load the default metallib` at runtime
+
+The Metal shader library was not built. Run:
+
+```bash
+make metallib
+```
+
+This compiles the `.metal` shader sources from the MLX Swift dependency and places `mlx.metallib` next to the binary.
+
 ### Global hotkey not working
+
 Make sure Accessibility permission is enabled in System Settings → Privacy & Security → Accessibility.
 
 ### App can't be opened because developer cannot be verified
-```
-xattr -cr /path/to/VibingSpeech.app
+
+```bash
+xattr -cr VibingSpeech.app
 ```
 
 ## Architecture
@@ -88,9 +151,9 @@ Sources/VibingSpeech/
 
 ## Credits
 
-- **speech-swift** (Apache 2.0) - https://github.com/soniqo/speech-swift
-- **Qwen3-ASR** - Alibaba Cloud
-- **MLX** - Apple Machine Learning Explore
+- **speech-swift** (Apache 2.0) — https://github.com/soniqo/speech-swift
+- **Qwen3-ASR** — Alibaba Cloud
+- **MLX Swift** — Apple Machine Learning Explore
 
 ## License
 
