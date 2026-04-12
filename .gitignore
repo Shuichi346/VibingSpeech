@@ -1,7 +1,15 @@
 /.build
-Package.resolved
+.swiftpm/
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+.DS_Store
+Thumbs.db
 .vscode/launch.json
-/UI-image
 node_modules/
 /.opencode
+UI-image/UI1.png
+UI-image/UI2.png
+UI-image/UI3.png
+UI-image/UI4.png
 AGENTS.md
