@@ -4,6 +4,7 @@ APP_NAME := VibingSpeech
 APP_BUNDLE := $(APP_NAME).app
 APP_DIR := $(APP_BUNDLE)/Contents
 METALLIB_SCRIPT := scripts/build_mlx_metallib.sh
+ICON_SRC := Resources/icon/icon.icns
 
 build:
 	swift build -c release
@@ -23,6 +24,12 @@ app: build
 	@mkdir -p $(APP_DIR)/Resources
 	@cp .build/release/$(APP_NAME) $(APP_DIR)/MacOS/$(APP_NAME)
 	@cp .build/release/mlx.metallib $(APP_DIR)/MacOS/mlx.metallib
+	@if [ -f "$(ICON_SRC)" ]; then \
+		cp "$(ICON_SRC)" $(APP_DIR)/Resources/icon.icns; \
+		echo "  Copied app icon"; \
+	else \
+		echo "  Warning: $(ICON_SRC) not found, skipping app icon"; \
+	fi
 	@/usr/libexec/PlistBuddy -c "Add :CFBundleName string $(APP_NAME)" $(APP_DIR)/Info.plist
 	@/usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string $(APP_NAME)" $(APP_DIR)/Info.plist
 	@/usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string com.shuichi.$(APP_NAME)" $(APP_DIR)/Info.plist
@@ -32,6 +39,7 @@ app: build
 	@/usr/libexec/PlistBuddy -c "Add :CFBundlePackageType string APPL" $(APP_DIR)/Info.plist
 	@/usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 15.0" $(APP_DIR)/Info.plist
 	@/usr/libexec/PlistBuddy -c "Add :LSUIElement bool true" $(APP_DIR)/Info.plist
+	@/usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string icon" $(APP_DIR)/Info.plist
 	@/usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string VibingSpeech needs microphone access for voice transcription." $(APP_DIR)/Info.plist
 	@echo "Created $(APP_BUNDLE)"
 	@echo ""
