@@ -7,8 +7,8 @@
 //
 
 import AppKit
-import SwiftUI
 import Combine
+import SwiftUI
 
 // MARK: - Observable state object owned by NSPanel
 
@@ -37,7 +37,8 @@ final class OverlayState: ObservableObject {
 
     func startAnimating() {
         stopAnimating()
-        _animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+        _animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) {
+            [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.updateBars()
             }
@@ -80,7 +81,8 @@ final class OverlayState: ObservableObject {
             // バーごとのランダム揺らぎ
             let randomFactor = CGFloat.random(in: 0.55...1.0)
 
-            let target = minBarHeight + (maxBarHeight - minBarHeight) * level * envelope * randomFactor
+            let target =
+                minBarHeight + (maxBarHeight - minBarHeight) * level * envelope * randomFactor
             let clamped = min(max(target, minBarHeight), maxBarHeight)
 
             let previous = i < barHeights.count ? barHeights[i] : minBarHeight
@@ -164,14 +166,16 @@ class RecordingOverlayPanel: NSPanel {
     }
 
     func hideOverlay() {
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.15
-            self.animator().alphaValue = 0
-        }, completionHandler: {
-            Task { @MainActor in
-                self.orderOut(nil)
-            }
-        })
+        NSAnimationContext.runAnimationGroup(
+            { context in
+                context.duration = 0.15
+                self.animator().alphaValue = 0
+            },
+            completionHandler: {
+                Task { @MainActor in
+                    self.orderOut(nil)
+                }
+            })
     }
 }
 
