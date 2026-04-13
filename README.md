@@ -1,17 +1,18 @@
 # VibingSpeech
 
-Fully on-device macOS voice input app. Global hotkey → record → transcribe (Qwen3-ASR) → paste text at cursor. Apple Silicon exclusive.
+Fully on-device macOS voice input app. After recording is complete, AI performs batch analysis of the context, enabling transcription with higher accuracy than real-time methods. Since it converts text after understanding the meaning of entire sentences, misconversions of homonyms are significantly reduced. Global hotkey → record → transcribe (Qwen3-ASR) → optional LLM text processing → paste text at cursor. Apple Silicon exclusive.
 
 ## Features
 
 - ✅ **Global Hotkey:** Hold Right Option to record, release to transcribe (short press for toggle mode)
 - ✅ **On-Device Transcription:** Uses Qwen3-ASR models, runs entirely locally with no cloud calls
-- ✅ **Model Selection:** Choose between 0.6B (8-bit, ~1GB) and 1.7B (4-bit, ~2.1GB) models
+- ✅ **Model Selection:** Choose between 0.6B (8-bit, ~1GB) and 1.7B (4-bit, ~2.1GB) ASR models
+- ✅ **LLM Text Processing:** Optional on-device post-processing powered by Qwen3-4B-Instruct-2507-4bit via mlx-swift-lm
+- ✅ **Processing Presets:** "Fix Typos" for error correction, "Bullet Points" for list formatting, "Custom" for user-defined prompts
 - ✅ **Floating Overlay:** Animated microphone indicator during recording
 - ✅ **Hotword Dictionary:** Add custom terms to improve recognition accuracy
 - ✅ **Transcription History:** View and manage past transcriptions with configurable retention
 - ✅ **52 Languages:** Automatic language detection
-- ✅ **Text Polish:** Lightweight post-processing for cleaner output
 - ✅ **Menu Bar Resident:** Runs in background, no Dock icon
 - ✅ **Accessibility Friendly:** Works with any application that accepts text input
 
@@ -73,7 +74,7 @@ open VibingSpeech.app
 cp -r VibingSpeech.app /Applications/
 ```
 
-First launch will automatically download the selected ASR model (~1 GB for the default 0.6B model).
+First launch will automatically download the selected ASR model (~1 GB for the default 0.6B model). If text processing is enabled, the Qwen3-4B-Instruct model (~2.5 GB) will also be downloaded.
 
 ## Permissions
 
@@ -92,12 +93,30 @@ You will be prompted to grant these permissions on first launch. If you miss the
 4. **Cancel recording:** Press Esc at any time during recording
 5. Access settings, hotwords, and history by clicking the menu bar icon → "Show Window"
 
-## Model Selection
+## ASR Model Selection
 
 | Model | Size | Memory | Accuracy |
 |---|---|---|---|
 | Qwen3-ASR 0.6B (8-bit) | ~1.0 GB | ~1.5 GB | Good for general use |
 | Qwen3-ASR 1.7B (4-bit) | ~2.1 GB | ~3.5 GB | Higher accuracy for complex speech |
+
+## Text Processing (LLM)
+
+When enabled, transcribed text is post-processed by an on-device LLM before being pasted. This is entirely optional — when disabled, the LLM model is not loaded and transcription works exactly as before with no additional memory usage or latency.
+
+**Model:** [Qwen3-4B-Instruct-2507-4bit](https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-4bit) (~2.5 GB download, ~3.5 GB memory)
+
+**Presets:**
+
+| Preset | Description |
+|---|---|
+| Fix Typos | Corrects spelling errors, typos, and grammar while preserving meaning |
+| Bullet Points | Reformats text into a structured bullet-point list |
+| Custom | Uses a user-defined system prompt for any processing task |
+
+**Flow:** Record → Transcribe (ASR) → Detect language → Process text (LLM) → Paste
+
+The text processing model is loaded only when the feature is toggled on and unloaded when toggled off, keeping memory usage minimal when not in use.
 
 ## Troubleshooting
 
@@ -139,20 +158,31 @@ xattr -cr VibingSpeech.app
 
 ```
 Sources/VibingSpeech/
-├── App/             # @main, AppDelegate, AppState (central state)
-├── Audio/           # AudioCaptureManager, TranscriptionEngine
-├── HotkeyManager/   # GlobalHotkeyManager (CGEventTap)
-├── TextInsertion/   # Clipboard + Cmd+V simulation
-├── Persistence/     # UserDefaults settings, JSON history/hotwords
-├── Views/           # Main window tabs, floating overlay
-├── Models/          # Data models
-└── Utilities/       # Permissions, sound feedback, architecture check
+├── App/              # @main, AppDelegate, AppState (central state)
+├── Audio/            # AudioCaptureManager, TranscriptionEngine (Qwen3-ASR)
+├── HotkeyManager/    # GlobalHotkeyManager (CGEventTap)
+├── TextInsertion/    # Clipboard + Cmd+V simulation
+├── TextProcessing/   # LLM-based text processing (Qwen3-4B-Instruct via mlx-swift-lm)
+├── Persistence/      # UserDefaults settings, JSON history/hotwords
+├── Views/            # Main window tabs, floating overlay
+├── Models/           # Data models, presets
+└── Utilities/        # Permissions, sound feedback, architecture check
 ```
+
+## Dependencies
+
+| Package | Version | Purpose |
+|---|---|---|
+| [speech-swift](https://github.com/soniqo/speech-swift) | ≥ 0.0.9 | Qwen3-ASR speech recognition engine |
+| [mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm) | 2.31.3 | LLM inference for text processing |
+| [mlx-swift](https://github.com/ml-explore/mlx-swift) | 0.31.x | MLX array framework (shared dependency) |
 
 ## Credits
 
 - **speech-swift** (Apache 2.0) — https://github.com/soniqo/speech-swift
+- **mlx-swift-lm** (MIT) — https://github.com/ml-explore/mlx-swift-lm
 - **Qwen3-ASR** — Alibaba Cloud
+- **Qwen3-4B-Instruct-2507** — Alibaba Cloud
 - **MLX Swift** — Apple Machine Learning Explore
 
 ## License

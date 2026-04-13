@@ -58,9 +58,22 @@ import Observation
         }
     }
 
-    var textPolishEnabled: Bool {
+    var textProcessingEnabled: Bool {
         didSet {
-            UserDefaults.standard.set(textPolishEnabled, forKey: "textPolishEnabled")
+            UserDefaults.standard.set(textProcessingEnabled, forKey: "textProcessingEnabled")
+        }
+    }
+
+    var textProcessingPreset: TextProcessingPreset {
+        didSet {
+            UserDefaults.standard.set(textProcessingPreset.rawValue, forKey: "textProcessingPreset")
+        }
+    }
+
+    var customTextProcessingPrompt: String {
+        didSet {
+            UserDefaults.standard.set(
+                customTextProcessingPrompt, forKey: "customTextProcessingPrompt")
         }
     }
 
@@ -97,7 +110,8 @@ import Observation
     init() {
         // Load saved values or use defaults
         if let rawModel = UserDefaults.standard.string(forKey: "selectedModel"),
-           let model = ASRModelVariant(rawValue: rawModel) {
+            let model = ASRModelVariant(rawValue: rawModel)
+        {
             self.selectedModel = model
         } else {
             self.selectedModel = .defaultVariant
@@ -105,21 +119,34 @@ import Observation
 
         self.soundFeedbackEnabled = UserDefaults.standard.bool(forKey: "soundFeedbackEnabled")
 
-        if UserDefaults.standard.object(forKey: "textPolishEnabled") != nil {
-            self.textPolishEnabled = UserDefaults.standard.bool(forKey: "textPolishEnabled")
+        if UserDefaults.standard.object(forKey: "textProcessingEnabled") != nil {
+            self.textProcessingEnabled = UserDefaults.standard.bool(forKey: "textProcessingEnabled")
         } else {
-            self.textPolishEnabled = true
+            self.textProcessingEnabled = false
         }
 
+        if let rawPreset = UserDefaults.standard.string(forKey: "textProcessingPreset"),
+            let preset = TextProcessingPreset(rawValue: rawPreset)
+        {
+            self.textProcessingPreset = preset
+        } else {
+            self.textProcessingPreset = .fixTypos
+        }
+
+        self.customTextProcessingPrompt =
+            UserDefaults.standard.string(forKey: "customTextProcessingPrompt") ?? ""
+
         if let rawRetention = UserDefaults.standard.string(forKey: "historyRetention"),
-           let retention = HistoryRetention(rawValue: rawRetention) {
+            let retention = HistoryRetention(rawValue: rawRetention)
+        {
             self.historyRetention = retention
         } else {
             self.historyRetention = .forever
         }
 
         if let rawAppearance = UserDefaults.standard.string(forKey: "appearanceMode"),
-           let appearance = AppearanceMode(rawValue: rawAppearance) {
+            let appearance = AppearanceMode(rawValue: rawAppearance)
+        {
             self.appearanceMode = appearance
         } else {
             self.appearanceMode = .system
@@ -128,7 +155,8 @@ import Observation
         self.selectedMicrophoneID = UserDefaults.standard.string(forKey: "selectedMicrophoneID")
 
         if let rawHotkey = UserDefaults.standard.string(forKey: "recordingHotkey"),
-           let hotkey = RecordingHotkey(rawValue: rawHotkey) {
+            let hotkey = RecordingHotkey(rawValue: rawHotkey)
+        {
             self.recordingHotkey = hotkey
         } else {
             self.recordingHotkey = .rightOption

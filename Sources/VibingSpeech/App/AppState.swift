@@ -22,6 +22,7 @@ import Observation
     let hotwords: HotwordStore
     let audioCapture = AudioCaptureManager()
     let transcriptionEngine = TranscriptionEngine()
+    let textProcessingEngine = TextProcessingEngine()
     let hotkeyManager = GlobalHotkeyManager()
 
     private(set) var recordingState: RecordingState = .idle
@@ -53,7 +54,34 @@ import Observation
         do {
             try await transcriptionEngine.loadModel(settings.selectedModel)
         } catch {
-            lastError = "Failed to load model: \(error.localizedDescription)"
+            lastError = "Failed to load ASR model: \(error.localizedDescription)"
+        }
+
+        // Load text processing model if enabled
+        if settings.textProcessingEnabled {
+            do {
+                try await textProcessingEngine.loadModel()
+            } catch {
+                lastError = "Failed to load text processing model: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// Toggle text processing on/off. Loads/unloads the LLM model accordingly.
+    func setTextProcessingEnabled(_ enabled: Bool) async {
+        settings.textProcessingEnabled = enabled
+        if enabled {
+            if !textProcessingEngine.isModelLoaded {
+                do {
+                    try await textProcessingEngine.loadModel()
+                } catch {
+                    lastError =
+                        "Failed to load text processing model: \(error.localizedDescription)"
+                    settings.textProcessingEnabled = false
+                }
+            }
+        } else {
+            textProcessingEngine.unloadModel()
         }
     }
 
@@ -123,16 +151,39 @@ import Observation
         onRecordingStateChanged?(.transcribing)
 
         let pressedAt = hotkeyPressedAt
-        let polishEnabled = settings.textPolishEnabled
+        let textProcessingEnabled = settings.textProcessingEnabled
+        let textProcessingPreset = settings.textProcessingPreset
+        let customPrompt = settings.customTextProcessingPrompt
         let currentVariant = transcriptionEngine.currentVariant ?? .defaultVariant
+        let configuredLanguage = settings.language
 
         Task { [weak self] in
             guard let self = self else { return }
 
-            let text = self.transcriptionEngine.transcribe(audio: audioSamples)
+            let rawText = self.transcriptionEngine.transcribe(audio: audioSamples)
 
-            if !text.isEmpty {
-                let processedText = polishEnabled ? self.polishText(text) : text
+            if !rawText.isEmpty {
+                // Detect language from the transcription output
+                let detectedLanguage = self.detectLanguage(
+                    from: rawText, configured: configuredLanguage)
+
+                var processedText = rawText
+
+                // Apply text processing if enabled and model is loaded
+                if textProcessingEnabled && self.textProcessingEngine.isModelLoaded {
+                    do {
+                        processedText = try await self.textProcessingEngine.processText(
+                            rawText,
+                            preset: textProcessingPreset,
+                            detectedLanguage: detectedLanguage,
+                            customPrompt: customPrompt
+                        )
+                    } catch {
+                        // If processing fails, fall back to raw text
+                        print("Text processing failed: \(error). Using raw transcription.")
+                        processedText = rawText
+                    }
+                }
 
                 TextInsertionService.insertText(processedText)
 
@@ -150,24 +201,58 @@ import Observation
         }
     }
 
+    /// Detect the language of transcribed text.
+    /// If the user configured a specific language, use that.
+    /// Otherwise, use a simple heuristic based on character analysis.
+    private func detectLanguage(from text: String, configured: String) -> String {
+        if configured != "auto" {
+            return configured
+        }
+
+        // Simple heuristic: check for CJK characters
+        let cjkRanges: [ClosedRange<Unicode.Scalar>] = [
+            Unicode.Scalar(0x3040)!...Unicode.Scalar(0x309F)!,  // Hiragana
+            Unicode.Scalar(0x30A0)!...Unicode.Scalar(0x30FF)!,  // Katakana
+        ]
+        let kanjiRange = Unicode.Scalar(0x4E00)!...Unicode.Scalar(0x9FFF)!
+        let hangulRange = Unicode.Scalar(0xAC00)!...Unicode.Scalar(0xD7AF)!
+
+        var japaneseCount = 0
+        var chineseCount = 0
+        var koreanCount = 0
+        var latinCount = 0
+
+        for scalar in text.unicodeScalars {
+            if cjkRanges.contains(where: { $0.contains(scalar) }) {
+                japaneseCount += 1
+            } else if kanjiRange.contains(scalar) {
+                chineseCount += 1  // Could be Japanese kanji too
+            } else if hangulRange.contains(scalar) {
+                koreanCount += 1
+            } else if scalar.isASCII && scalar.properties.isAlphabetic {
+                latinCount += 1
+            }
+        }
+
+        // If Japanese kana found, it's Japanese (kanji alone is ambiguous)
+        if japaneseCount > 0 {
+            return "ja"
+        }
+        if koreanCount > 0 {
+            return "ko"
+        }
+        if chineseCount > 3 && latinCount < chineseCount {
+            return "zh"
+        }
+        return "en"
+    }
+
     private func cancelRecording() {
         audioCapture.cancelRecording()
         SoundFeedback.playErrorSound(isEnabled: settings.soundFeedbackEnabled)
         recordingState = .idle
         isToggleMode = false
         onRecordingStateChanged?(.idle)
-    }
-
-    private func polishText(_ text: String) -> String {
-        var processed = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-        processed = processed.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Capitalize first letter if it's English
-        if let first = processed.first, first.isASCII && first.isLowercase {
-            processed = processed.prefix(1).uppercased() + processed.dropFirst()
-        }
-
-        return processed
     }
 
     func switchModel(_ variant: ASRModelVariant) async throws {

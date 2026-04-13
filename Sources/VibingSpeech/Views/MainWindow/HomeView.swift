@@ -55,53 +55,115 @@ struct HomeView: View {
                 }
 
                 HStack {
-                    Text("Translation")
-                    Spacer()
-                    Text("Off")
-                        .foregroundColor(.secondary)
-                }
-
-                HStack {
                     Text("Cancel Recording")
                     Spacer()
                     Text("Esc")
                         .foregroundColor(.secondary)
                 }
+            }
 
-                Toggle("Text Polish", isOn: Binding(
-                    get: { appState.settings.textPolishEnabled },
-                    set: { appState.settings.textPolishEnabled = $0 }
-                ))
-                Toggle("Sound Feedback", isOn: Binding(
-                    get: { appState.settings.soundFeedbackEnabled },
-                    set: { appState.settings.soundFeedbackEnabled = $0 }
-                ))
+            // Text Processing Section
+            Section {
+                Toggle(
+                    "Text Processing (LLM)",
+                    isOn: Binding(
+                        get: { appState.settings.textProcessingEnabled },
+                        set: { newValue in
+                            Task {
+                                await appState.setTextProcessingEnabled(newValue)
+                            }
+                        }
+                    ))
 
-                Picker("Language", selection: Binding(
-                    get: { appState.settings.language },
-                    set: { appState.settings.language = $0 }
-                )) {
+                if appState.settings.textProcessingEnabled {
+                    textProcessingStatusView
+
+                    Picker(
+                        "Preset",
+                        selection: Binding(
+                            get: { appState.settings.textProcessingPreset },
+                            set: { appState.settings.textProcessingPreset = $0 }
+                        )
+                    ) {
+                        ForEach(TextProcessingPreset.allCases) { preset in
+                            Text("\(preset.displayName) (\(preset.localizedDisplayName))")
+                                .tag(preset)
+                        }
+                    }
+
+                    if appState.settings.textProcessingPreset == .custom {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Custom Prompt")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            TextEditor(
+                                text: Binding(
+                                    get: { appState.settings.customTextProcessingPrompt },
+                                    set: { appState.settings.customTextProcessingPrompt = $0 }
+                                )
+                            )
+                            .frame(minHeight: 60, maxHeight: 120)
+                            .font(.body)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                            )
+                        }
+                    }
+
+                    HStack {
+                        Text("Model")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("Qwen3-4B-Instruct-2507 (4-bit)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+
+            Section {
+                Toggle(
+                    "Sound Feedback",
+                    isOn: Binding(
+                        get: { appState.settings.soundFeedbackEnabled },
+                        set: { appState.settings.soundFeedbackEnabled = $0 }
+                    ))
+
+                Picker(
+                    "Language",
+                    selection: Binding(
+                        get: { appState.settings.language },
+                        set: { appState.settings.language = $0 }
+                    )
+                ) {
                     Text("Auto").tag("auto")
                     Text("English").tag("en")
                     Text("Japanese").tag("ja")
                     Text("Chinese").tag("zh")
                 }
 
-                Picker("Appearance", selection: Binding(
-                    get: { appState.settings.appearanceMode },
-                    set: { appState.settings.appearanceMode = $0 }
-                )) {
+                Picker(
+                    "Appearance",
+                    selection: Binding(
+                        get: { appState.settings.appearanceMode },
+                        set: { appState.settings.appearanceMode = $0 }
+                    )
+                ) {
                     ForEach(SettingsStore.AppearanceMode.allCases, id: \.self) { mode in
                         Text(mode.displayName).tag(mode)
                     }
                 }
 
-                Picker("ASR Model", selection: Binding(
-                    get: { appState.settings.selectedModel },
-                    set: {
-                        appState.settings.selectedModel = $0
-                    }
-                )) {
+                Picker(
+                    "ASR Model",
+                    selection: Binding(
+                        get: { appState.settings.selectedModel },
+                        set: {
+                            appState.settings.selectedModel = $0
+                        }
+                    )
+                ) {
                     ForEach(ASRModelVariant.allCases, id: \.self) { variant in
                         Text("\(variant.displayName) (\(variant.estimatedSize))").tag(variant)
                     }
@@ -112,10 +174,13 @@ struct HomeView: View {
                     }
                 }
 
-                Picker("Microphone", selection: Binding(
-                    get: { appState.settings.selectedMicrophoneID },
-                    set: { appState.settings.selectedMicrophoneID = $0 }
-                )) {
+                Picker(
+                    "Microphone",
+                    selection: Binding(
+                        get: { appState.settings.selectedMicrophoneID },
+                        set: { appState.settings.selectedMicrophoneID = $0 }
+                    )
+                ) {
                     Text("System Default").tag(nil as String?)
                     ForEach(AudioCaptureManager.availableMicrophones(), id: \.id) { mic in
                         Text(mic.name).tag(mic.id as String?)
@@ -124,6 +189,28 @@ struct HomeView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    @ViewBuilder
+    private var textProcessingStatusView: some View {
+        if appState.textProcessingEngine.isLoading {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(appState.textProcessingEngine.loadingProgress)
+                    .font(.caption)
+                    .foregroundColor(.orange)
+            }
+        } else if appState.textProcessingEngine.isModelLoaded {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(.green)
+                    .frame(width: 6, height: 6)
+                Text("Text processing ready")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
     }
 
     private var statusIndicator: some View {
