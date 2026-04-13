@@ -55,7 +55,7 @@ If you see a version number (e.g., `metal version 32.x.x`), the toolchain is rea
 ## Build & Run
 
 ```bash
-git clone https://github.com/yourusername/VibingSpeech.git
+git clone https://github.com/Shuichi346/VibingSpeech.git
 cd VibingSpeech
 make build
 make run
