@@ -221,3 +221,5 @@ Sources/VibingSpeech/
 ## License
 
 [MIT](LICENSE)
+
+This project depends on third-party libraries, each distributed under its own license. When building and distributing this application, please comply with the respective licenses of all dependencies (e.g., Apache 2.0 for speech-swift). See each library's repository for details.
