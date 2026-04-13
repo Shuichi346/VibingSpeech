@@ -53,10 +53,6 @@ struct MainContentView: View {
         .safeAreaInset(edge: .bottom) {
             HStack {
                 Spacer()
-                Text("Powered by speech-swift")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Spacer()
             }
             .padding(.vertical, 8)
         }
