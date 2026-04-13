@@ -1,6 +1,22 @@
+
+
 # VibingSpeech
 
-Fully on-device macOS voice input app. After recording is complete, AI performs batch analysis of the context, enabling transcription with higher accuracy than real-time methods. Since it converts text after understanding the meaning of entire sentences, misconversions of homonyms are significantly reduced. Global hotkey → record → transcribe (Qwen3-ASR) → optional LLM text processing → paste text at cursor. Apple Silicon exclusive.
+Fully on-device macOS voice input app. Global hotkey → record → transcribe (Qwen3-ASR) → optional LLM text processing → paste text at cursor. Apple Silicon exclusive.
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/README_PNG/UI_main.png" alt="Home — Settings & Status" width="500">
+</p>
+<p align="center"><em>Home — configure hotkey, text processing, ASR model, and more</em></p>
+
+<p align="center">
+  <img src="docs/README_PNG/UI_Hotwords.png" alt="Hotwords — Custom Vocabulary" width="500">
+  &nbsp;&nbsp;
+  <img src="docs/README_PNG/UI_History.png" alt="History — Transcription Log" width="500">
+</p>
+<p align="center"><em>Hotwords — add custom terms &nbsp;|&nbsp; History — browse past transcriptions</em></p>
 
 ## Features
 
