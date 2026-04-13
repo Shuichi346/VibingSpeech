@@ -11,7 +11,7 @@
 
 <p align="center">
   <strong>完全にデバイス上で動作するmacOS音声入力アプリ。</strong><br>
-  グローバルホットキー → 録音 → 転写（Qwen3-ASR） → オプショナルなLLMテキスト処理 → カーソル位置に貼り付け。
+  録音完了後、AIが文脈のバッチ解析を実行し、リアルタイム方式よりも高精度な音声認識を可能にします。文全体の意味を理解してからテキストに変換するため、同音異義語の誤変換が大幅に削減されます。グローバルホットキー → 録音 → 音声認識（Qwen3-ASR） → オプションのLLMテキスト処理 → カーソル位置にペースト。
 </p>
 
 <p align="center">
@@ -26,16 +26,22 @@
 ## スクリーンショット
 
 <p align="center">
-  <img src="docs/README_PNG/UI_main.png" alt="ホーム — 設定とステータス" width="500">
+  <img src="docs/README_PNG/UI_main.png" alt="ホーム — 設定と状態" width="500">
+  <br>
+  <em>ホーム — ASRモデル、テキスト処理、ホットキーなどを設定。</em>
 </p>
-<p align="center"><em>ホーム — ASRモデル、テキスト処理、ホットキーなどを設定。</em></p>
 
 <p align="center">
   <img src="docs/README_PNG/UI_Hotwords.png" alt="ホットワード — カスタム語彙" width="500">
-  &nbsp;&nbsp;
-  <img src="docs/README_PNG/UI_History.png" alt="履歴 — 転写ログ" width="500">
+  <br>
+  <em>固有名詞と専門用語のためのホットワード辞書。</em>
 </p>
-<p align="center"><em>左：固有名詞・専門用語のためのホットワード辞書。右：検索可能な転写履歴。</em></p>
+
+<p align="center">
+  <img src="docs/README_PNG/UI_History.png" alt="履歴 — 転写ログ" width="500">
+  <br>
+  <em>検索可能な転写履歴。</em>
+</p>
 
 ---
 

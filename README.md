@@ -11,7 +11,7 @@
 
 <p align="center">
   <strong>Fully on-device macOS voice input app.</strong><br>
-  Global hotkey → Record → Transcribe (Qwen3-ASR) → Optional LLM text processing → Paste at cursor.
+  After recording is complete, AI performs batch analysis of the context, enabling transcription with higher accuracy than real-time methods. Since it converts text after understanding the meaning of entire sentences, misconversions of homonyms are significantly reduced.Global hotkey → Record → Transcribe (Qwen3-ASR) → Optional LLM text processing → Paste at cursor.
 </p>
 
 <p align="center">
@@ -27,15 +27,21 @@
 
 <p align="center">
   <img src="docs/README_PNG/UI_main.png" alt="Home — Settings & Status" width="500">
+  <br>
+  <em>Home — Configure ASR model, text processing, hotkey, and more.</em>
 </p>
-<p align="center"><em>Home — Configure ASR model, text processing, hotkey, and more.</em></p>
 
 <p align="center">
   <img src="docs/README_PNG/UI_Hotwords.png" alt="Hotwords — Custom Vocabulary" width="500">
-  &nbsp;&nbsp;
-  <img src="docs/README_PNG/UI_History.png" alt="History — Transcription Log" width="500">
+  <br>
+  <em>Hotword dictionary for proper nouns &amp; terms.</em>
 </p>
-<p align="center"><em>Left: Hotword dictionary for proper nouns &amp; terms. &nbsp; Right: Searchable transcription history.</em></p>
+
+<p align="center">
+  <img src="docs/README_PNG/UI_History.png" alt="History — Transcription Log" width="500">
+  <br>
+  <em>Searchable transcription history.</em>
+</p>
 
 ---
 
