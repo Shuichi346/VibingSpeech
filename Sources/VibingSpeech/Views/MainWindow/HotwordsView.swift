@@ -66,6 +66,5 @@ struct HotwordsView: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("Hotwords")
     }
 }

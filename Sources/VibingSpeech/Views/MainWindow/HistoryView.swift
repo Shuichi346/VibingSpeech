@@ -26,10 +26,13 @@ struct HistoryView: View {
 
                     Spacer()
 
-                    Picker("", selection: Binding(
-                        get: { appState.settings.historyRetention },
-                        set: { appState.settings.historyRetention = $0 }
-                    )) {
+                    Picker(
+                        "",
+                        selection: Binding(
+                            get: { appState.settings.historyRetention },
+                            set: { appState.settings.historyRetention = $0 }
+                        )
+                    ) {
                         ForEach(SettingsStore.HistoryRetention.allCases, id: \.self) { retention in
                             Text(retention.displayName).tag(retention)
                         }
@@ -47,7 +50,8 @@ struct HistoryView: View {
                         description: Text("Your transcriptions will appear here")
                     )
                 } else {
-                    let grouped = Dictionary(grouping: appState.history.records, by: { $0.formattedDate })
+                    let grouped = Dictionary(
+                        grouping: appState.history.records, by: { $0.formattedDate })
                     ForEach(grouped.keys.sorted(by: >), id: \.self) { date in
                         Section(header: Text(date)) {
                             ForEach(grouped[date] ?? []) { record in
@@ -82,7 +86,6 @@ struct HistoryView: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("History")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Clear") {

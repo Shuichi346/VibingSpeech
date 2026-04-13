@@ -49,7 +49,7 @@
 
 - ✅ **Global Hotkey** — Hold Right Option to record, release to transcribe (short press for toggle mode)
 - ✅ **On-Device Transcription** — Qwen3-ASR models, zero cloud calls, 52-language auto-detection
-- ✅ **ASR Model Selection** — Switch between 0.6B (8-bit, ~1 GB) and 1.7B (4-bit, ~2.1 GB)
+- ✅ **ASR Model Selection** — Switch between 0.6B (8-bit, ~1 GB), 1.7B (4-bit, ~2.1 GB), and 1.7B (8-bit, ~2.3 GB)
 - ✅ **LLM Text Processing** — Optional on-device post-processing via Qwen3-4B-Instruct-2507-4bit
 - ✅ **Processing Presets** — "Fix Typos", "Bullet Points", or fully custom prompts
 - ✅ **Floating Overlay** — Animated waveform indicator during recording
@@ -140,6 +140,8 @@ You'll be prompted on first launch. To enable later: System Settings → Privacy
 |---|---|---|---|
 | Qwen3-ASR 0.6B (8-bit) | ~1.0 GB | ~1.5 GB | General use, fast startup |
 | Qwen3-ASR 1.7B (4-bit) | ~2.1 GB | ~3.5 GB | Complex speech, higher accuracy |
+| Qwen3-ASR 1.7B (8-bit) | ~2.3 GB | ~4.0 GB | Best accuracy, especially for Japanese |
+
 
 ## Text Processing (LLM)
 

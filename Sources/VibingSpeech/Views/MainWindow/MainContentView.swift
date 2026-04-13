@@ -16,6 +16,14 @@ struct MainContentView: View {
         case home
         case hotwords
         case history
+
+        var title: String {
+            switch self {
+            case .home: return "VibingSpeech"
+            case .hotwords: return "Hotwords"
+            case .history: return "History"
+            }
+        }
     }
 
     var body: some View {
@@ -29,7 +37,6 @@ struct MainContentView: View {
                     .tag(Tab.history)
             }
             .listStyle(.sidebar)
-            .navigationTitle("VibingSpeech")
         } detail: {
             switch selectedTab {
             case .home:
@@ -40,6 +47,7 @@ struct MainContentView: View {
                 HistoryView(appState: appState)
             }
         }
+        .navigationTitle(selectedTab.title)
         .frame(minWidth: 700, minHeight: 500)
         .preferredColorScheme(appState.settings.appearanceMode.colorScheme())
         .safeAreaInset(edge: .bottom) {
