@@ -117,6 +117,36 @@ cp -r VibingSpeech.app /Applications/
 
 First launch automatically downloads the selected ASR model (~1 GB for the default 0.6B). If text processing is enabled, the Qwen3-4B-Instruct model (~2.5 GB) is also downloaded.
 
+## Model Cache Location
+
+VibingSpeech downloads two types of models on first launch. Each is cached in a different location on your Mac.
+
+### ASR Model (Qwen3-ASR)
+
+Downloaded via [speech-swift](https://github.com/soniqo/speech-swift) and stored in:
+
+```
+~/Library/Caches/qwen3-speech/
+```
+
+This directory contains the selected ASR model weights (0.6B, 1.7B, etc.). You can override this location by setting the `QWEN3_CACHE_DIR` environment variable.
+
+### Text Processing Model (Qwen3-4B-Instruct)
+
+Downloaded via [mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm) using the Hugging Face Hub client and stored in:
+
+```
+~/.cache/huggingface/hub/
+```
+
+The model files are inside a subdirectory named `models--mlx-community--Qwen3-4B-Instruct-2507-4bit`. You can override this location by setting the `HF_HOME` or `HF_HUB_CACHE` environment variable.
+
+### Freeing Disk Space
+
+If you want to reclaim disk space, simply delete the directories listed above. VibingSpeech will re-download the required models automatically on the next launch. In total, models can occupy approximately **1 – 4.8 GB** depending on your selected ASR variant and whether text processing is enabled.
+
+> **Tip:** The `~/Library` and `~/.cache` folders are hidden by default in Finder. Press `Cmd + Shift + .` in Finder to reveal hidden files, or navigate directly using Finder → Go → Go to Folder (`Cmd + Shift + G`).
+
 ## Permissions
 
 VibingSpeech requires two permissions:
@@ -221,5 +251,3 @@ Sources/VibingSpeech/
 ## License
 
 [MIT](LICENSE)
-
-This project depends on third-party libraries, each distributed under its own license. When building and distributing this application, please comply with the respective licenses of all dependencies (e.g., Apache 2.0 for speech-swift). See each library's repository for details.
