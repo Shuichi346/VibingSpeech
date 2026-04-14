@@ -62,10 +62,39 @@
 
 - macOS 26.0+（Tahoe）
 - Apple Silicon（M1以降）
-- Xcode 26+ / Command Line Tools（Swift 6.2）
-- **Metal Toolchain**（[Metal Toolchainセットアップ](#metal-toolchainセットアップ)を参照）
+- **Xcode 26+**（App Storeからフルインストール — Command Line Toolsのみでは不十分です）
+- インターネット接続（初回モデルダウンロード用、約1〜4.8GB）
 
-## Metal Toolchainセットアップ
+> **注意：** このアプリはAppKit、SwiftUI、AVFoundation、CoreAudio、Metalフレームワークを使用しています。macOS SDKとMetal Toolchainのサポートを提供するために、Xcodeのフルインストールが必要です。
+
+## セットアップガイド（ゼロから始める方へ）
+
+Macで初めて開発環境をセットアップする場合は、以下の手順を順番に実行してください。
+
+### ステップ1：Xcodeをインストール
+
+1. Macで**App Store**を開く
+2. **Xcode**を検索してインストール（Apple IDが必要、約30GBのダウンロード）
+3. Xcodeを一度起動して使用許諾契約に同意
+4. Xcodeの追加コンポーネントのインストールが完了するのを待つ
+
+確認：
+
+```bash
+# ターミナルを開く（アプリケーション → ユーティリティ → ターミナル）
+xcode-select -p
+# 期待値: /Applications/Xcode.app/Contents/Developer
+```
+
+パスが別の場所を指している場合は以下を実行：
+
+```bash
+sudo xcode-select -s /Applications/Xcode.app
+```
+
+> **なぜフルXcodeが必要？** このプロジェクトはmacOS SDKフレームワーク（AppKit、SwiftUI、AVFoundation、CoreAudio）とMetal Toolchainに依存しています。Command Line Toolsのみの場合、Metal Toolchainが含まれず、`swift build`が必要なフレームワークを見つけられない場合があります。
+
+### ステップ2：Metal Toolchainをインストール
 
 Xcode 26以降では、**Metal Toolchainが同梱されなくなり**、別途インストールが必要です。VibingSpeechはMLX Swiftに依存しており、ビルド時にMetalシェーダーをコンパイルします。
 
@@ -94,6 +123,21 @@ xcrun metal --version
 > xcodebuild -importComponent metalToolchain -importPath /tmp/MetalExport/*.exportedBundle
 > ```
 
+### ステップ3：ツールの確認
+
+Xcodeをインストールすると、`git`、`swift`、`make` がすべて利用可能になります。確認：
+
+```bash
+git --version
+# 期待値: git version 2.x.x
+
+swift --version
+# 期待値: Apple Swift version 6.2.x
+
+make --version
+# 期待値: GNU Make 3.x.x or 4.x.x
+```
+
 ## ビルドと実行
 
 ```bash
@@ -115,7 +159,14 @@ open VibingSpeech.app
 cp -r VibingSpeech.app /Applications/
 ```
 
-初回起動時、選択されたASRモデル（デフォルトの0.6Bで約1GB）が自動的にダウンロードされます。テキスト処理が有効な場合、Qwen3-4B-Instructモデル（約2.5GB）もダウンロードされます。
+### 初回起動
+
+初回起動時、VibingSpeechは必要なAIモデルを自動的にダウンロードします。**インターネット接続が必要です。**
+
+- **ASRモデル**（デフォルト0.6B）：約1GBのダウンロード
+- **テキスト処理モデル**（有効な場合）：約2.5GBのダウンロード
+
+ダウンロードの進捗はアプリウィンドウに表示されます。これは1回限りのダウンロードで、モデルはローカルにキャッシュされます。
 
 ## モデルキャッシュの場所
 
@@ -188,6 +239,14 @@ VibingSpeechには以下の2つの権限が必要です：
 
 ## トラブルシューティング
 
+### `swift build`が「no such module」エラーで失敗する
+
+Xcodeのフルインストール（Command Line Toolsだけでなく）がインストールされ、選択されていることを確認してください：
+
+```bash
+sudo xcode-select -s /Applications/Xcode.app
+```
+
 ### Metalシェーダービルドが失敗する
 
 ```bash
@@ -215,6 +274,10 @@ make metallib
 ```bash
 xattr -cr VibingSpeech.app
 ```
+
+### モデルダウンロードが失敗する・非常に遅い
+
+安定したインターネット接続があることを確認してください。モデルはHugging Faceからダウンロードされます。プロキシの背後にいる場合は、`HTTP_PROXY` / `HTTPS_PROXY`環境変数を設定してください。
 
 ## アーキテクチャ
 
@@ -250,3 +313,5 @@ Sources/VibingSpeech/
 ## ライセンス
 
 [MIT](LICENSE)
+
+このツールで使用される外部モデルおよびライブラリには、それぞれ独自のライセンスがあります。

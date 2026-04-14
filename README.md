@@ -11,7 +11,7 @@
 
 <p align="center">
   <strong>Fully on-device macOS voice input app.</strong><br>
-  After recording is complete, AI performs batch analysis of the context, enabling transcription with higher accuracy than real-time methods. Since it converts text after understanding the meaning of entire sentences, misconversions of homonyms are significantly reduced.Global hotkey → Record → Transcribe (Qwen3-ASR) → Optional LLM text processing → Paste at cursor.
+  After recording is complete, AI performs batch analysis of the context, enabling transcription with higher accuracy than real-time methods. Since it converts text after understanding the meaning of entire sentences, misconversions of homonyms are significantly reduced. Global hotkey → Record → Transcribe (Qwen3-ASR) → Optional LLM text processing → Paste at cursor.
 </p>
 
 <p align="center">
@@ -62,10 +62,39 @@
 
 - macOS 26.0+ (Tahoe)
 - Apple Silicon (M1 or later)
-- Xcode 26+ / Command Line Tools (Swift 6.2)
-- **Metal Toolchain** (see [Metal Toolchain Setup](#metal-toolchain-setup))
+- **Xcode 26+** (full installation from App Store — Command Line Tools alone are not sufficient)
+- Internet connection (for first-time model downloads, ~1–4.8 GB)
 
-## Metal Toolchain Setup
+> **Note:** This app uses AppKit, SwiftUI, AVFoundation, CoreAudio, and Metal frameworks. The full Xcode installation is required to provide the macOS SDK and Metal Toolchain support.
+
+## Setup Guide (From Scratch)
+
+If this is your first time setting up a development environment on your Mac, follow these steps in order.
+
+### Step 1: Install Xcode
+
+1. Open the **App Store** on your Mac
+2. Search for **Xcode** and install it (requires Apple ID, ~30 GB download)
+3. Launch Xcode once and agree to the license agreement
+4. Wait for Xcode to finish installing additional components
+
+Verify:
+
+```bash
+# Open Terminal (Applications → Utilities → Terminal)
+xcode-select -p
+# Expected: /Applications/Xcode.app/Contents/Developer
+```
+
+If the path points elsewhere, run:
+
+```bash
+sudo xcode-select -s /Applications/Xcode.app
+```
+
+> **Why full Xcode?** This project depends on macOS SDK frameworks (AppKit, SwiftUI, AVFoundation, CoreAudio) and the Metal Toolchain. Command Line Tools alone do not include the Metal Toolchain, and `swift build` may fail to locate required frameworks.
+
+### Step 2: Install Metal Toolchain
 
 Starting with Xcode 26, the **Metal Toolchain is no longer bundled** and must be installed separately. VibingSpeech depends on MLX Swift, which compiles Metal shaders at build time.
 
@@ -94,6 +123,21 @@ xcrun metal --version
 > xcodebuild -importComponent metalToolchain -importPath /tmp/MetalExport/*.exportedBundle
 > ```
 
+### Step 3: Verify Tools
+
+After installing Xcode, `git`, `swift`, and `make` are all available. Verify:
+
+```bash
+git --version
+# Expected: git version 2.x.x
+
+swift --version
+# Expected: Apple Swift version 6.2.x
+
+make --version
+# Expected: GNU Make 3.x.x or 4.x.x
+```
+
 ## Build & Run
 
 ```bash
@@ -115,7 +159,14 @@ open VibingSpeech.app
 cp -r VibingSpeech.app /Applications/
 ```
 
-First launch automatically downloads the selected ASR model (~1 GB for the default 0.6B). If text processing is enabled, the Qwen3-4B-Instruct model (~2.5 GB) is also downloaded.
+### First Launch
+
+On first launch, VibingSpeech automatically downloads the required AI models. **An internet connection is required.**
+
+- **ASR model** (default 0.6B): ~1 GB download
+- **Text processing model** (if enabled): ~2.5 GB download
+
+Download progress is shown in the app window. This is a one-time download; models are cached locally for future use.
 
 ## Model Cache Location
 
@@ -189,6 +240,14 @@ When enabled, transcribed text is post-processed by an on-device LLM before past
 
 ## Troubleshooting
 
+### `swift build` fails with "no such module" errors
+
+Ensure you have the full Xcode installed (not just Command Line Tools) and it is selected:
+
+```bash
+sudo xcode-select -s /Applications/Xcode.app
+```
+
 ### Metal shader build fails
 
 ```bash
@@ -216,6 +275,10 @@ Enable Accessibility in System Settings → Privacy & Security → Accessibility
 ```bash
 xattr -cr VibingSpeech.app
 ```
+
+### Model download fails or is very slow
+
+Ensure you have a stable internet connection. Models are downloaded from Hugging Face. If you're behind a proxy, set the `HTTP_PROXY` / `HTTPS_PROXY` environment variables.
 
 ## Architecture
 
@@ -251,3 +314,5 @@ Sources/VibingSpeech/
 ## License
 
 [MIT](LICENSE)
+
+External models and libraries used by this tool have their own respective licenses.
