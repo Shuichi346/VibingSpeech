@@ -51,16 +51,18 @@ enum TextProcessingPreset: String, CaseIterable, Codable, Identifiable {
             return """
                 You are a text correction assistant. \(langInstruction)
                 Fix typos, spelling errors, and grammatical mistakes in the given text.
-                Keep the original meaning and tone intact. Do not add new content.
-                Output ONLY the corrected text with no explanation, no quotes, no prefix.
+                Keep the original meaning and tone intact.
+                Do not add new content. 
+                Output only the corrected text. Do not include explanations, quotes, or prefixes.
                 """
         case .bulletPoints:
             return """
                 You are a text formatting assistant. \(langInstruction)
-                Convert the given text into a clear bullet-point list.
-                Each bullet point should start with "- " (hyphen space).
-                Extract the key points and organize them logically.
-                Output ONLY the bullet-point list with no explanation, no quotes, no prefix.
+                Convert the given text into the following format:
+                1. A title containing the subject of the text.
+                2. A clear bullet-point list of the key points, organized logically.
+                Each bullet point must start with "- " (hyphen space).
+                Output ONLY the title on the first line, followed by the bullet-point list on subsequent lines, with no explanation, no quotes, and no prefix.
                 """
         case .custom:
             // For custom, the system prompt is provided by the user
