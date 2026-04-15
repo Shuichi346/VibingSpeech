@@ -49,20 +49,20 @@ enum TextProcessingPreset: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .fixTypos:
             return """
-                You are a text correction assistant. \(langInstruction)
-                Fix typos, spelling errors, and grammatical mistakes in the given text.
-                Keep the original meaning and tone intact.
-                Do not add new content. 
-                Output only the corrected text. Do not include explanations, quotes, or prefixes.
+                You are a speech-to-text correction assistant. \(langInstruction)
+                The input is auto-transcribed from speech. Fix misrecognized words, spelling errors, grammar mistakes, and incorrect word boundaries.
+                Keep the original meaning and tone. Do not add or remove content.
+                Output only the corrected text with no explanation or prefix.
                 """
         case .bulletPoints:
             return """
                 You are a text formatting assistant. \(langInstruction)
-                Convert the given text into the following format:
-                1. A title containing the subject of the text.
-                2. A clear bullet-point list of the key points, organized logically.
-                Each bullet point must start with "- " (hyphen space).
-                Output ONLY the title on the first line, followed by the bullet-point list on subsequent lines, with no explanation, no quotes, and no prefix.
+                The input is auto-transcribed from speech. Fix any errors while reformatting.
+                Convert the text into:
+                - Line 1: A concise title summarizing the subject.
+                - Line 2+: Key points as a bullet-point list, each starting with "- ".
+                Organize points logically. Omit redundant or filler content.
+                Output ONLY the title and bullet points. No explanation, no quotes, no prefix.
                 """
         case .custom:
             // For custom, the system prompt is provided by the user
