@@ -11,6 +11,9 @@ import Foundation
 struct TranscriptionRecord: Codable, Identifiable, Equatable {
     let id: UUID
     let text: String
+    /// The original transcription text before LLM text processing.
+    /// When Text Processing (LLM) is disabled, this is `nil`.
+    let originalText: String?
     let timestamp: Date
     let wordCount: Int
     let durationSeconds: Double
@@ -31,12 +34,14 @@ struct TranscriptionRecord: Codable, Identifiable, Equatable {
     init(
         id: UUID = UUID(),
         text: String,
+        originalText: String? = nil,
         timestamp: Date = Date(),
         durationSeconds: Double,
         modelVariant: ASRModelVariant
     ) {
         self.id = id
         self.text = text
+        self.originalText = originalText
         self.timestamp = timestamp
         self.durationSeconds = durationSeconds
         self.modelVariant = modelVariant
@@ -48,10 +53,16 @@ struct TranscriptionRecord: Codable, Identifiable, Equatable {
         if text.rangeOfCharacter(from: cjkCharacterSet) != nil {
             self.wordCount = text.count
         } else {
-            self.wordCount = text.components(separatedBy: .whitespacesAndNewlines)
+            self.wordCount =
+                text.components(separatedBy: .whitespacesAndNewlines)
                 .filter { !$0.isEmpty }
                 .count
         }
+    }
+
+    /// Whether this record was processed by the LLM text processing engine.
+    var wasProcessedByLLM: Bool {
+        originalText != nil
     }
 
     var formattedTime: String {

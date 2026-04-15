@@ -167,28 +167,33 @@ import Observation
                 let detectedLanguage = self.detectLanguage(
                     from: rawText, configured: configuredLanguage)
 
-                var processedText = rawText
+                var finalText = rawText
+                var originalText: String? = nil
 
                 // Apply text processing if enabled and model is loaded
                 if textProcessingEnabled && self.textProcessingEngine.isModelLoaded {
                     do {
-                        processedText = try await self.textProcessingEngine.processText(
+                        let processed = try await self.textProcessingEngine.processText(
                             rawText,
                             preset: textProcessingPreset,
                             detectedLanguage: detectedLanguage,
                             customPrompt: customPrompt
                         )
+                        // Store the original transcription before LLM processing
+                        originalText = rawText
+                        finalText = processed
                     } catch {
-                        // If processing fails, fall back to raw text
+                        // If processing fails, fall back to raw text (originalText stays nil)
                         print("Text processing failed: \(error). Using raw transcription.")
-                        processedText = rawText
+                        finalText = rawText
                     }
                 }
 
-                TextInsertionService.insertText(processedText)
+                TextInsertionService.insertText(finalText)
 
                 let record = TranscriptionRecord(
-                    text: processedText,
+                    text: finalText,
+                    originalText: originalText,
                     durationSeconds: Date().timeIntervalSince(pressedAt ?? Date()),
                     modelVariant: currentVariant
                 )
