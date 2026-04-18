@@ -1,5 +1,5 @@
 //
-//  HomeView.swift
+//  HistoryView.swift
 //  VibingSpeech
 //
 //  Created by Shuichi on 2026/04/12.
@@ -8,239 +8,151 @@
 
 import SwiftUI
 
-struct HomeView: View {
+struct HistoryView: View {
     @Bindable var appState: AppState
+    @State private var showClearConfirmation = false
+    @State private var searchText = ""
+
+    private var filteredRecords: [TranscriptionRecord] {
+        if searchText.isEmpty {
+            return appState.history.records
+        }
+        return appState.history.records.filter {
+            $0.text.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
+    private var groupedRecords: [(String, [TranscriptionRecord])] {
+        let grouped = Dictionary(grouping: filteredRecords) { $0.formattedDate }
+        let order = ["Today", "Yesterday"]
+        return grouped.sorted { lhs, rhs in
+            let lhsIdx = order.firstIndex(of: lhs.key) ?? Int.max
+            let rhsIdx = order.firstIndex(of: rhs.key) ?? Int.max
+            if lhsIdx != rhsIdx {
+                return lhsIdx < rhsIdx
+            }
+            guard let lhsFirst = lhs.value.first, let rhsFirst = rhs.value.first else {
+                return lhs.key < rhs.key
+            }
+            return lhsFirst.timestamp > rhsFirst.timestamp
+        }
+    }
 
     var body: some View {
         Form {
             Section {
                 HStack {
-                    Text("VibingSpeech — Just Speak It!")
-                        .font(.title)
-                    Spacer()
-                    statusIndicator
-                }
-            }
-
-            Section {
-                HStack(spacing: 40) {
-                    VStack {
-                        Label("\(appState.history.todayWordCount) words", systemImage: "pen")
-                        Text("Words today")
+                    Image(systemName: "clock.arrow.circlepath")
+                        .foregroundColor(.accentColor)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Save History")
+                            .font(.headline)
+                        Text("How long to keep dictation history on device?")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
-
-                    VStack {
-                        Label("\(appState.history.totalWordCount) words", systemImage: "doc.text")
-                        Text("Total words")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-            }
-
-            Section {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Recording Hotkey")
-                        Spacer()
-                        Text("⌥ \(appState.settings.recordingHotkey.displayName)")
-                            .foregroundColor(.secondary)
-                    }
-                    Text("Long press = hold mode · Short press = toggle mode")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                HStack {
-                    Text("Cancel Recording")
                     Spacer()
-                    Text("Esc")
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            // Text Processing Section
-            Section {
-                Toggle(
-                    "Text Processing (LLM)",
-                    isOn: Binding(
-                        get: { appState.settings.textProcessingEnabled },
-                        set: { newValue in
-                            Task {
-                                await appState.setTextProcessingEnabled(newValue)
-                            }
-                        }
-                    ))
-
-                if appState.settings.textProcessingEnabled {
-                    textProcessingStatusView
-
                     Picker(
-                        "Preset",
+                        "",
                         selection: Binding(
-                            get: { appState.settings.textProcessingPreset },
-                            set: { appState.settings.textProcessingPreset = $0 }
+                            get: { appState.settings.historyRetention },
+                            set: {
+                                appState.settings.historyRetention = $0
+                                appState.history.pruneIfNeeded(retention: $0)
+                            }
                         )
                     ) {
-                        ForEach(TextProcessingPreset.allCases) { preset in
-                            Text("\(preset.displayName) (\(preset.localizedDisplayName))")
-                                .tag(preset)
+                        ForEach(SettingsStore.HistoryRetention.allCases, id: \.self) { retention in
+                            Text(retention.displayName).tag(retention)
                         }
                     }
-
-                    if appState.settings.textProcessingPreset == .custom {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Custom Prompt")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            TextEditor(
-                                text: Binding(
-                                    get: { appState.settings.customTextProcessingPrompt },
-                                    set: { appState.settings.customTextProcessingPrompt = $0 }
-                                )
-                            )
-                            .frame(minHeight: 60, maxHeight: 120)
-                            .font(.body)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
-                            )
-                        }
-                    }
-
-                    HStack {
-                        Text("Model")
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("Qwen3.5-4B (4-bit, thinking off)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+                    .frame(width: 120)
                 }
             }
 
             Section {
-                Toggle(
-                    "Sound Feedback",
-                    isOn: Binding(
-                        get: { appState.settings.soundFeedbackEnabled },
-                        set: { appState.settings.soundFeedbackEnabled = $0 }
-                    ))
-
-                Picker(
-                    "Language",
-                    selection: Binding(
-                        get: { appState.settings.language },
-                        set: { appState.settings.language = $0 }
-                    )
-                ) {
-                    Text("Auto").tag("auto")
-                    Text("English").tag("en")
-                    Text("Japanese").tag("ja")
-                    Text("Chinese").tag("zh")
-                }
-
-                Picker(
-                    "Appearance",
-                    selection: Binding(
-                        get: { appState.settings.appearanceMode },
-                        set: { appState.settings.appearanceMode = $0 }
-                    )
-                ) {
-                    ForEach(SettingsStore.AppearanceMode.allCases, id: \.self) { mode in
-                        Text(mode.displayName).tag(mode)
+                HStack {
+                    TextField("Search history...", text: $searchText)
+                        .textFieldStyle(.roundedBorder)
+                    Spacer()
+                    Button(role: .destructive) {
+                        showClearConfirmation = true
+                    } label: {
+                        Label("Clear All", systemImage: "trash")
                     }
-                }
-
-                Picker(
-                    "ASR Model",
-                    selection: Binding(
-                        get: { appState.settings.selectedModel },
-                        set: {
-                            appState.settings.selectedModel = $0
+                    .disabled(appState.history.records.isEmpty)
+                    .alert("Clear All History?", isPresented: $showClearConfirmation) {
+                        Button("Cancel", role: .cancel) {}
+                        Button("Clear All", role: .destructive) {
+                            appState.history.clearAll()
                         }
-                    )
-                ) {
-                    ForEach(ASRModelVariant.allCases, id: \.self) { variant in
-                        Text("\(variant.displayName) (\(variant.estimatedSize))").tag(variant)
+                    } message: {
+                        Text("This action cannot be undone.")
                     }
                 }
-                .onChange(of: appState.settings.selectedModel) { _, newVariant in
-                    Task {
-                        try? await appState.switchModel(newVariant)
-                    }
-                }
+            }
 
-                Picker(
-                    "Microphone",
-                    selection: Binding(
-                        get: { appState.settings.selectedMicrophoneID },
-                        set: { appState.settings.selectedMicrophoneID = $0 }
+            if filteredRecords.isEmpty {
+                Section {
+                    ContentUnavailableView(
+                        "No transcription history",
+                        systemImage: "clock",
+                        description: Text(
+                            searchText.isEmpty
+                                ? "Transcriptions will appear here after recording"
+                                : "No results matching \"\(searchText)\""
+                        )
                     )
-                ) {
-                    Text("System Default").tag(nil as String?)
-                    ForEach(AudioCaptureManager.availableMicrophones(), id: \.id) { mic in
-                        Text(mic.name).tag(mic.id as String?)
+                }
+            } else {
+                ForEach(groupedRecords, id: \.0) { dateLabel, records in
+                    Section(header: Text(dateLabel)) {
+                        ForEach(records) { record in
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(alignment: .top) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(record.text)
+                                            .lineLimit(nil)
+                                            .textSelection(.enabled)
+
+                                        if let original = record.originalText {
+                                            Text("Original: \(original)")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                                .lineLimit(2)
+                                        }
+                                    }
+                                    Spacer()
+                                    Button(role: .destructive) {
+                                        appState.history.delete(record)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+                                HStack(spacing: 12) {
+                                    Text(record.formattedTime)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Text("\(record.wordCount) words")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    if record.wasProcessedByLLM {
+                                        Text("LLM")
+                                            .font(.caption2)
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 1)
+                                            .background(Color.accentColor.opacity(0.15))
+                                            .cornerRadius(3)
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
                     }
                 }
             }
         }
         .formStyle(.grouped)
-    }
-
-    @ViewBuilder
-    private var textProcessingStatusView: some View {
-        if appState.textProcessingEngine.isLoading {
-            HStack(spacing: 8) {
-                ProgressView()
-                    .controlSize(.small)
-                Text(appState.textProcessingEngine.loadingProgress)
-                    .font(.caption)
-                    .foregroundColor(.orange)
-            }
-        } else if appState.textProcessingEngine.isModelLoaded {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(.green)
-                    .frame(width: 6, height: 6)
-                Text("Text processing ready")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-        }
-    }
-
-    private var statusIndicator: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 8, height: 8)
-            Text(statusText)
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-    }
-
-    private var statusColor: Color {
-        if appState.transcriptionEngine.isLoading {
-            return .orange
-        } else if appState.transcriptionEngine.isModelLoaded {
-            return .green
-        } else {
-            return .gray
-        }
-    }
-
-    private var statusText: String {
-        if appState.transcriptionEngine.isLoading {
-            return appState.transcriptionEngine.loadingProgress
-        } else if appState.transcriptionEngine.isModelLoaded {
-            return "Ready to record"
-        } else {
-            return "Model not loaded"
-        }
     }
 }

@@ -62,7 +62,6 @@ struct HomeView: View {
                 }
             }
 
-            // Text Processing Section
             Section {
                 Toggle(
                     "Text Processing (LLM)",
@@ -115,7 +114,7 @@ struct HomeView: View {
                         Text("Model")
                             .foregroundColor(.secondary)
                         Spacer()
-                        Text("Qwen3-4B-Instruct-2507 (4-bit)")
+                        Text("Qwen3.5-4B (4-bit, thinking off)")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
