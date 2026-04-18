@@ -42,17 +42,21 @@ struct HomeView: View {
             }
 
             Section {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Recording Hotkey")
-                        Spacer()
-                        Text("⌥ \(appState.settings.recordingHotkey.displayName)")
-                            .foregroundColor(.secondary)
+                Picker(
+                    "Recording Hotkey",
+                    selection: Binding(
+                        get: { appState.settings.recordingHotkey },
+                        set: { appState.updateRecordingHotkey($0) }
+                    )
+                ) {
+                    ForEach(SettingsStore.RecordingHotkey.allCases, id: \.self) { hotkey in
+                        Text("\(hotkey.symbol) \(hotkey.displayName)").tag(hotkey)
                     }
-                    Text("Long press = hold mode · Short press = toggle mode")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                 }
+
+                Text("Long press = hold mode · Short press = toggle mode")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
 
                 HStack {
                     Text("Cancel Recording")
@@ -60,9 +64,37 @@ struct HomeView: View {
                     Text("Esc")
                         .foregroundColor(.secondary)
                 }
+
+                if appState.isHotkeyReady {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(.green)
+                            .frame(width: 6, height: 6)
+                        Text("Global hotkey is active")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(
+                            appState.hotkeyErrorMessage ?? "Hotkey setup is incomplete.",
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .foregroundColor(.orange)
+                        .font(.caption)
+
+                        HStack {
+                            Button("Open Accessibility Settings") {
+                                appState.openAccessibilitySettings()
+                            }
+                            Button("Retry Hotkey Setup") {
+                                appState.retryHotkeySetup()
+                            }
+                        }
+                    }
+                }
             }
 
-            // Text Processing Section
             Section {
                 Toggle(
                     "Text Processing (LLM)",
@@ -115,7 +147,7 @@ struct HomeView: View {
                         Text("Model")
                             .foregroundColor(.secondary)
                         Spacer()
-                        Text("Qwen3-4B-Instruct-2507 (4-bit)")
+                        Text("Qwen3.5-4B (4-bit, thinking off)")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -158,9 +190,11 @@ struct HomeView: View {
                 Picker(
                     "ASR Model",
                     selection: Binding(
-                        get: { appState.settings.selectedModel },
-                        set: {
-                            appState.settings.selectedModel = $0
+                        get: { appState.selectedModelForUI },
+                        set: { newVariant in
+                            Task {
+                                await appState.switchModel(newVariant)
+                            }
                         }
                     )
                 ) {
@@ -168,11 +202,7 @@ struct HomeView: View {
                         Text("\(variant.displayName) (\(variant.estimatedSize))").tag(variant)
                     }
                 }
-                .onChange(of: appState.settings.selectedModel) { _, newVariant in
-                    Task {
-                        try? await appState.switchModel(newVariant)
-                    }
-                }
+                .disabled(appState.recordingState != .idle || appState.transcriptionEngine.isLoading)
 
                 Picker(
                     "Microphone",
@@ -227,6 +257,8 @@ struct HomeView: View {
     private var statusColor: Color {
         if appState.transcriptionEngine.isLoading {
             return .orange
+        } else if !appState.isHotkeyReady {
+            return .orange
         } else if appState.transcriptionEngine.isModelLoaded {
             return .green
         } else {
@@ -237,6 +269,8 @@ struct HomeView: View {
     private var statusText: String {
         if appState.transcriptionEngine.isLoading {
             return appState.transcriptionEngine.loadingProgress
+        } else if !appState.isHotkeyReady {
+            return "Hotkey setup required"
         } else if appState.transcriptionEngine.isModelLoaded {
             return "Ready to record"
         } else {

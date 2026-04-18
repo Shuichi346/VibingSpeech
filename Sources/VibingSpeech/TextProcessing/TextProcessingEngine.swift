@@ -9,6 +9,9 @@
 import Foundation
 import MLXLLM
 import MLXLMCommon
+import MLXHuggingFace
+import HuggingFace
+import Tokenizers
 import Observation
 
 @Observable @MainActor final class TextProcessingEngine {
@@ -17,8 +20,8 @@ import Observation
     private(set) var isLoading = false
     private(set) var loadingProgress = ""
 
-    static let modelId = "mlx-community/Qwen3-4B-Instruct-2507-4bit"
-    static let estimatedSize = "~2.5 GB"
+    static let modelId = "mlx-community/Qwen3.5-4B-MLX-4bit"
+    static let estimatedSize = "~2.9 GB"
     static let estimatedMemory = "~3.5 GB"
 
     init() {}
@@ -35,7 +38,10 @@ import Observation
 
         do {
             let configuration = ModelConfiguration(id: Self.modelId)
+            // mlx-swift-lm v3: use MLXHuggingFace macros for downloader and tokenizer
             modelContainer = try await LLMModelFactory.shared.loadContainer(
+                from: #hubDownloader(),
+                using: #huggingFaceTokenizerLoader(),
                 configuration: configuration
             ) { progress in
                 Task { @MainActor [weak self] in
@@ -58,6 +64,11 @@ import Observation
     }
 
     /// Process text using the LLM with the given preset and detected language.
+    ///
+    /// Uses Qwen3.5-4B with thinking disabled (enable_thinking=false).
+    /// Non-thinking optimal parameters:
+    ///   temperature=0.7, topP=0.8, topK=20, minP=0.0,
+    ///   presencePenalty=1.5, repetitionPenalty=1.0 (disabled)
     ///
     /// - Parameters:
     ///   - text: The transcribed text to process
@@ -85,28 +96,54 @@ import Observation
             systemPrompt = preset.systemPrompt(detectedLanguage: detectedLanguage)
         }
 
-        // Qwen3-4B-Instruct-2507 recommended parameters:
-        // Temperature=0.7, TopP=0.8, TopK=20, MinP=0
+        // Qwen3.5-4B non-thinking optimal parameters:
+        // Temperature=0.7, TopP=0.8, TopK=20, MinP=0.0
+        // presence_penalty=1.5, repetition_penalty=1.0 (no repetition penalty)
         let generateParameters = GenerateParameters(
             maxTokens: 2048,
             temperature: 0.7,
             topP: 0.8,
             topK: 20,
             minP: 0.0,
-            repetitionPenalty: 1.05,
-            repetitionContextSize: 64
+            presencePenalty: 1.5,
+            presenceContextSize: 64
         )
 
+        // Disable thinking mode via additionalContext
+        // The Qwen3.5 chat template checks: enable_thinking is defined and enable_thinking is false
+        // When false, it outputs <think>\n\n</think>\n\n which effectively skips reasoning
         let session = ChatSession(
             container,
             instructions: systemPrompt,
-            generateParameters: generateParameters
+            generateParameters: generateParameters,
+            additionalContext: ["enable_thinking": false]
         )
 
         let result = try await session.respond(to: text)
 
         // Clean up the result: remove any leading/trailing whitespace
-        let cleaned = result.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Also strip any residual <think>...</think> tags that might appear
+        let cleaned = stripThinkTags(result.trimmingCharacters(in: .whitespacesAndNewlines))
         return cleaned.isEmpty ? text : cleaned
+    }
+
+    /// Remove <think>...</think> tags from the output, in case the model
+    /// still produces them despite enable_thinking=false.
+    private func stripThinkTags(_ text: String) -> String {
+        // Pattern: <think> ... </think> followed by optional whitespace
+        var result = text
+        while let thinkStart = result.range(of: "<think>") {
+            if let thinkEnd = result.range(of: "</think>", range: thinkStart.upperBound..<result.endIndex) {
+                // Remove everything from <think> to </think> inclusive, plus trailing whitespace
+                let endIdx = thinkEnd.upperBound
+                let afterEnd = result[endIdx...].drop(while: { $0.isWhitespace || $0.isNewline })
+                result = String(result[result.startIndex..<thinkStart.lowerBound]) + String(afterEnd)
+            } else {
+                // Unclosed <think> tag — remove from <think> to end
+                result = String(result[result.startIndex..<thinkStart.lowerBound])
+                break
+            }
+        }
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

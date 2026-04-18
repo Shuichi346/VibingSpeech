@@ -18,39 +18,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Task { @MainActor in
             self.appState = AppState()
-            
+
             ArchitectureCheck.ensureAppleSilicon()
-            
+
             NSApp.setActivationPolicy(.accessory)
 
             statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-            statusItem?.button?.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "VibingSpeech")
+            statusItem?.button?.image = NSImage(
+                systemSymbolName: "mic.fill", accessibilityDescription: "VibingSpeech")
 
             let menu = NSMenu()
-            menu.addItem(NSMenuItem(title: "Show Window", action: #selector(showWindow), keyEquivalent: ""))
+            menu.addItem(
+                NSMenuItem(title: "Show Window", action: #selector(showWindow), keyEquivalent: ""))
             menu.addItem(.separator())
-            menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApp.terminate), keyEquivalent: "q"))
+            menu.addItem(
+                NSMenuItem(title: "Quit", action: #selector(NSApp.terminate), keyEquivalent: "q"))
 
             statusItem?.menu = menu
 
-            // Setup overlay panel
+            // オーバーレイを初期化する
             overlayPanel = RecordingOverlayPanel()
 
-            // Wire audio level: the panel's internal timer reads this on each tick.
-            // No separate polling timer needed in AppDelegate.
+            // パネル側のタイマーから現在の音量を参照できるようにする
             overlayPanel?.setAudioLevelProvider { [weak self] in
-                // audioLevel is @MainActor, but this closure is called from MainActor context
-                // (OverlayState's timer dispatches to MainActor before calling updateBars)
                 return self?.appState.audioCapture.audioLevel ?? 0
             }
 
-            // Setup app state
-            await appState.setup()
-            
-            // Show main window on launch
+            // 起動直後にウィンドウを出して、モデル読み込みの進捗を見せる
             showWindow()
 
-            // Setup state observation
+            // UI 表示後に初期化を進める
+            await appState.setup()
+
+            // 録音状態に応じてオーバーレイを切り替える
             appState.onRecordingStateChanged = { [weak self] state in
                 guard let self = self else { return }
                 self.overlayPanel?.recordingState = state

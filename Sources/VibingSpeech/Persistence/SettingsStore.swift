@@ -44,6 +44,20 @@ import Observation
             case .leftControl: return "Left Control"
             }
         }
+
+        var keyCode: UInt16 {
+            switch self {
+            case .rightOption: return KeyCode.rightOption.rawValue
+            case .leftControl: return KeyCode.leftControl.rawValue
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .rightOption: return "⌥"
+            case .leftControl: return "⌃"
+            }
+        }
     }
 
     var selectedModel: ASRModelVariant {
@@ -108,7 +122,7 @@ import Observation
     }
 
     init() {
-        // Load saved values or use defaults
+        // 保存済みの設定を読み込み、なければ既定値を使う
         if let rawModel = UserDefaults.standard.string(forKey: "selectedModel"),
             let model = ASRModelVariant(rawValue: rawModel)
         {

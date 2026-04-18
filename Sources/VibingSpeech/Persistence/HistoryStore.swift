@@ -19,8 +19,10 @@ import Observation
         if let directoryURL = directoryURL {
             baseURL = directoryURL
         } else {
-            baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-                .appendingPathComponent("VibingSpeech")
+            baseURL = FileManager.default.urls(
+                for: .applicationSupportDirectory, in: .userDomainMask
+            ).first!
+            .appendingPathComponent("VibingSpeech")
         }
 
         try? FileManager.default.createDirectory(at: baseURL, withIntermediateDirectories: true)
@@ -70,7 +72,8 @@ import Observation
 
     var todayWordCount: Int {
         let calendar = Calendar.current
-        return records
+        return
+            records
             .filter { calendar.isDateInToday($0.timestamp) }
             .reduce(0) { $0 + $1.wordCount }
     }

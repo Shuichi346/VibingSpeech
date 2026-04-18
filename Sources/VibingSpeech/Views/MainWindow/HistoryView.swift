@@ -11,13 +11,39 @@ import SwiftUI
 struct HistoryView: View {
     @Bindable var appState: AppState
     @State private var showClearConfirmation = false
-    /// Tracks which record IDs have their original text expanded.
-    @State private var expandedOriginalIDs: Set<UUID> = []
+    @State private var searchText = ""
+
+    private var filteredRecords: [TranscriptionRecord] {
+        if searchText.isEmpty {
+            return appState.history.records
+        }
+        return appState.history.records.filter {
+            $0.text.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
+    private var groupedRecords: [(String, [TranscriptionRecord])] {
+        let grouped = Dictionary(grouping: filteredRecords) { $0.formattedDate }
+        let order = ["Today", "Yesterday"]
+        return grouped.sorted { lhs, rhs in
+            let lhsIdx = order.firstIndex(of: lhs.key) ?? Int.max
+            let rhsIdx = order.firstIndex(of: rhs.key) ?? Int.max
+            if lhsIdx != rhsIdx {
+                return lhsIdx < rhsIdx
+            }
+            guard let lhsFirst = lhs.value.first, let rhsFirst = rhs.value.first else {
+                return lhs.key < rhs.key
+            }
+            return lhsFirst.timestamp > rhsFirst.timestamp
+        }
+    }
 
     var body: some View {
         Form {
             Section {
                 HStack {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .foregroundColor(.accentColor)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Save History")
                             .font(.headline)
@@ -25,149 +51,108 @@ struct HistoryView: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
-
                     Spacer()
-
                     Picker(
                         "",
                         selection: Binding(
                             get: { appState.settings.historyRetention },
-                            set: { appState.settings.historyRetention = $0 }
+                            set: {
+                                appState.settings.historyRetention = $0
+                                appState.history.pruneIfNeeded(retention: $0)
+                            }
                         )
                     ) {
                         ForEach(SettingsStore.HistoryRetention.allCases, id: \.self) { retention in
                             Text(retention.displayName).tag(retention)
                         }
                     }
-                    .pickerStyle(.menu)
                     .frame(width: 120)
                 }
             }
 
             Section {
-                if appState.history.records.isEmpty {
+                HStack {
+                    TextField("Search history...", text: $searchText)
+                        .textFieldStyle(.roundedBorder)
+                    Spacer()
+                    Button(role: .destructive) {
+                        showClearConfirmation = true
+                    } label: {
+                        Label("Clear All", systemImage: "trash")
+                    }
+                    .disabled(appState.history.records.isEmpty)
+                    .alert("Clear All History?", isPresented: $showClearConfirmation) {
+                        Button("Cancel", role: .cancel) {}
+                        Button("Clear All", role: .destructive) {
+                            appState.history.clearAll()
+                        }
+                    } message: {
+                        Text("This action cannot be undone.")
+                    }
+                }
+            }
+
+            if filteredRecords.isEmpty {
+                Section {
                     ContentUnavailableView(
                         "No transcription history",
                         systemImage: "clock",
-                        description: Text("Your transcriptions will appear here")
+                        description: Text(
+                            searchText.isEmpty
+                                ? "Transcriptions will appear here after recording"
+                                : "No results matching \"\(searchText)\""
+                        )
                     )
-                } else {
-                    let grouped = Dictionary(
-                        grouping: appState.history.records, by: { $0.formattedDate })
-                    ForEach(grouped.keys.sorted(by: >), id: \.self) { date in
-                        Section(header: Text(date)) {
-                            ForEach(grouped[date] ?? []) { record in
-                                historyRow(for: record)
+                }
+            } else {
+                ForEach(groupedRecords, id: \.0) { dateLabel, records in
+                    Section(header: Text(dateLabel)) {
+                        ForEach(records) { record in
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(alignment: .top) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(record.text)
+                                            .lineLimit(nil)
+                                            .textSelection(.enabled)
+
+                                        if let original = record.originalText {
+                                            Text("Original: \(original)")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                                .lineLimit(2)
+                                        }
+                                    }
+                                    Spacer()
+                                    Button(role: .destructive) {
+                                        appState.history.delete(record)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+                                HStack(spacing: 12) {
+                                    Text(record.formattedTime)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Text("\(record.wordCount) words")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    if record.wasProcessedByLLM {
+                                        Text("LLM")
+                                            .font(.caption2)
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 1)
+                                            .background(Color.accentColor.opacity(0.15))
+                                            .cornerRadius(3)
+                                    }
+                                }
                             }
+                            .padding(.vertical, 2)
                         }
                     }
                 }
             }
         }
         .formStyle(.grouped)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("Clear") {
-                    showClearConfirmation = true
-                }
-                .disabled(appState.history.records.isEmpty)
-            }
-        }
-        .confirmationDialog(
-            "Clear all history?",
-            isPresented: $showClearConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Clear All", role: .destructive) {
-                appState.history.clearAll()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This action cannot be undone.")
-        }
-    }
-
-    @ViewBuilder
-    private func historyRow(for record: TranscriptionRecord) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Text(record.formattedTime)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .frame(width: 50, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 4) {
-                // Main text (LLM-processed if applicable, otherwise raw)
-                Text(record.text)
-                    .lineLimit(nil)
-                    .textSelection(.enabled)
-
-                // Show original text toggle when LLM processing was applied
-                if let originalText = record.originalText {
-                    let isExpanded = expandedOriginalIDs.contains(record.id)
-
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            if isExpanded {
-                                expandedOriginalIDs.remove(record.id)
-                            } else {
-                                expandedOriginalIDs.insert(record.id)
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                                .font(.caption2)
-                            Text("Original transcription")
-                                .font(.caption)
-                        }
-                        .foregroundColor(.accentColor)
-                    }
-                    .buttonStyle(.borderless)
-
-                    if isExpanded {
-                        Text(originalText)
-                            .lineLimit(nil)
-                            .textSelection(.enabled)
-                            .font(.callout)
-                            .foregroundColor(.secondary)
-                            .padding(.leading, 8)
-                            .padding(.vertical, 2)
-                            .overlay(
-                                Rectangle()
-                                    .fill(Color.accentColor.opacity(0.3))
-                                    .frame(width: 2),
-                                alignment: .leading
-                            )
-                    }
-                }
-
-                HStack(spacing: 8) {
-                    Text("\(record.wordCount) words")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    if record.wasProcessedByLLM {
-                        Text("LLM")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(
-                                Capsule()
-                                    .fill(Color.accentColor.opacity(0.7))
-                            )
-                    }
-                }
-            }
-
-            Spacer()
-
-            Button(role: .destructive) {
-                appState.history.delete(record)
-            } label: {
-                Image(systemName: "trash")
-            }
-            .buttonStyle(.borderless)
-        }
     }
 }

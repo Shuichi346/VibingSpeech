@@ -14,12 +14,30 @@ enum PermissionChecker {
         AXIsProcessTrusted()
     }
 
-    static func requestAccessibilityIfNeeded() {
-        if !AXIsProcessTrusted() {
-            let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-            let options = [key: true] as CFDictionary
-            AXIsProcessTrustedWithOptions(options)
+    static func requestAccessibilityIfNeeded(prompt: Bool = true) -> Bool {
+        if AXIsProcessTrusted() {
+            return true
         }
+
+        guard prompt else {
+            return false
+        }
+
+        let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        let options = [key: true] as CFDictionary
+        return AXIsProcessTrustedWithOptions(options)
+    }
+
+    static func openAccessibilitySettings() {
+        guard
+            let url = URL(
+                string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+            )
+        else {
+            return
+        }
+
+        NSWorkspace.shared.open(url)
     }
 
     static func requestMicrophoneAccess() async -> Bool {

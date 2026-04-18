@@ -50,7 +50,7 @@
 - ✅ **Global Hotkey** — Hold Right Option to record, release to transcribe (short press for toggle mode)
 - ✅ **On-Device Transcription** — Qwen3-ASR models, zero cloud calls, 52-language auto-detection
 - ✅ **ASR Model Selection** — Switch between 0.6B (8-bit, ~1 GB), 1.7B (4-bit, ~2.1 GB), and 1.7B (8-bit, ~2.3 GB)
-- ✅ **LLM Text Processing** — Optional on-device post-processing via Qwen3-4B-Instruct-2507-4bit
+- ✅ **LLM Text Processing** — Optional on-device post-processing via Qwen3.5-4B-MLX-4bit (thinking disabled)
 - ✅ **Processing Presets** — "Fix Typos", "Bullet Points", or fully custom prompts
 - ✅ **Floating Overlay** — Animated waveform indicator during recording
 - ✅ **Hotword Dictionary** — Add custom terms to improve recognition accuracy
@@ -164,7 +164,7 @@ cp -r VibingSpeech.app /Applications/
 On first launch, VibingSpeech automatically downloads the required AI models. **An internet connection is required.**
 
 - **ASR model** (default 0.6B): ~1 GB download
-- **Text processing model** (if enabled): ~2.5 GB download
+- **Text processing model** (if enabled): ~2.9 GB download
 
 Download progress is shown in the app window. This is a one-time download; models are cached locally for future use.
 
@@ -182,7 +182,7 @@ Downloaded via [speech-swift](https://github.com/soniqo/speech-swift) and stored
 
 This directory contains the selected ASR model weights (0.6B, 1.7B, etc.). You can override this location by setting the `QWEN3_CACHE_DIR` environment variable.
 
-### Text Processing Model (Qwen3-4B-Instruct)
+### Text Processing Model (Qwen3.5-4B)
 
 Downloaded via [mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm) using the Hugging Face Hub client and stored in:
 
@@ -190,7 +190,7 @@ Downloaded via [mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm) using 
 ~/.cache/huggingface/hub/
 ```
 
-The model files are inside a subdirectory named `models--mlx-community--Qwen3-4B-Instruct-2507-4bit`. You can override this location by setting the `HF_HOME` or `HF_HUB_CACHE` environment variable.
+The model files are inside a subdirectory named `models--mlx-community--Qwen3.5-4B-MLX-4bit`. You can override this location by setting the `HF_HOME` or `HF_HUB_CACHE` environment variable.
 
 ### Freeing Disk Space
 
@@ -228,7 +228,9 @@ You'll be prompted on first launch. To enable later: System Settings → Privacy
 
 When enabled, transcribed text is post-processed by an on-device LLM before pasting. **When disabled, the LLM is not loaded** — no extra memory, no extra latency.
 
-**Model:** [Qwen3-4B-Instruct-2507-4bit](https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-4bit) (~2.5 GB download, ~3.5 GB memory)
+**Model:** [Qwen3.5-4B-MLX-4bit](https://huggingface.co/mlx-community/Qwen3.5-4B-MLX-4bit) (~2.9 GB download, ~3.5 GB memory)
+
+Thinking (reasoning) mode is **disabled** for fast, direct responses. The model uses optimized non-thinking parameters: temperature=0.7, top_p=0.8, top_k=20, presence_penalty=1.5.
 
 | Preset | What it does |
 |---|---|
@@ -288,7 +290,7 @@ Sources/VibingSpeech/
 ├── Audio/            # AudioCaptureManager, TranscriptionEngine (Qwen3-ASR)
 ├── HotkeyManager/    # GlobalHotkeyManager (CGEventTap)
 ├── TextInsertion/    # Clipboard + Cmd+V simulation
-├── TextProcessing/   # LLM text processing (Qwen3-4B via mlx-swift-lm)
+├── TextProcessing/   # LLM text processing (Qwen3.5-4B via mlx-swift-lm)
 ├── Persistence/      # UserDefaults settings, JSON history/hotwords
 ├── Views/            # Main window tabs, floating overlay
 ├── Models/           # Data models, presets
@@ -300,15 +302,17 @@ Sources/VibingSpeech/
 | Package | Version | Purpose |
 |---|---|---|
 | [speech-swift](https://github.com/soniqo/speech-swift) | ≥ 0.0.9 | Qwen3-ASR speech recognition |
-| [mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm) | 2.31.3 | LLM inference for text processing |
+| [mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm) | 3.31.3 | LLM inference for text processing |
 | [mlx-swift](https://github.com/ml-explore/mlx-swift) | 0.31.x | MLX array framework (shared) |
+| [swift-huggingface](https://github.com/huggingface/swift-huggingface) | ≥ 0.9.0 | HuggingFace model downloader (mlx-swift-lm v3) |
+| [swift-transformers](https://github.com/huggingface/swift-transformers) | ≥ 1.3.0 | Tokenizer implementation (mlx-swift-lm v3) |
 
 ## Credits
 
 - **[speech-swift](https://github.com/soniqo/speech-swift)** (Apache 2.0) — Qwen3-ASR Swift wrapper
 - **[mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm)** (MIT) — LLM inference framework
 - **[Qwen3-ASR](https://huggingface.co/collections/aufklarer/qwen3-asr-mlx)** — Alibaba Cloud
-- **[Qwen3-4B-Instruct-2507](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507)** — Alibaba Cloud
+- **[Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B)** — Alibaba Cloud
 - **[MLX Swift](https://github.com/ml-explore/mlx-swift)** — Apple Machine Learning Explore
 
 ## License

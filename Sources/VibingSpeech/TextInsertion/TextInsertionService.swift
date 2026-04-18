@@ -13,52 +13,94 @@ enum TextInsertionService {
     static func insertText(_ text: String) {
         guard !text.isEmpty else { return }
 
-        // Save current clipboard contents
-        let previousContents = NSPasteboard.general.pasteboardItems?.compactMap { item in
+        let pasteboard = NSPasteboard.general
+        let previousSnapshot = snapshotPasteboard(pasteboard)
+
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        let insertedChangeCount = pasteboard.changeCount
+
+        guard let source = CGEventSource(stateID: .hidSystemState) else {
+            restorePasteboard(
+                previousSnapshot,
+                on: pasteboard,
+                onlyIfChangeCountMatches: insertedChangeCount
+            )
+            return
+        }
+
+        guard
+            let keyDown = CGEvent(
+                keyboardEventSource: source,
+                virtualKey: KeyCode.v.rawValue,
+                keyDown: true
+            )
+        else {
+            restorePasteboard(
+                previousSnapshot,
+                on: pasteboard,
+                onlyIfChangeCountMatches: insertedChangeCount
+            )
+            return
+        }
+        keyDown.flags.insert(KeyCode.commandMask)
+        keyDown.post(tap: .cghidEventTap)
+
+        guard
+            let keyUp = CGEvent(
+                keyboardEventSource: source,
+                virtualKey: KeyCode.v.rawValue,
+                keyDown: false
+            )
+        else {
+            restorePasteboard(
+                previousSnapshot,
+                on: pasteboard,
+                onlyIfChangeCountMatches: insertedChangeCount
+            )
+            return
+        }
+        keyUp.flags.insert(KeyCode.commandMask)
+        keyUp.post(tap: .cghidEventTap)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            restorePasteboard(
+                previousSnapshot,
+                on: pasteboard,
+                onlyIfChangeCountMatches: insertedChangeCount
+            )
+        }
+    }
+
+    private static func snapshotPasteboard(_ pasteboard: NSPasteboard) -> [[String: Data]] {
+        (pasteboard.pasteboardItems ?? []).map { item in
             item.types.reduce(into: [String: Data]()) { result, type in
                 if let data = item.data(forType: type) {
                     result[type.rawValue] = data
                 }
             }
         }
+    }
 
-        // Set new text to clipboard
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+    private static func restorePasteboard(
+        _ snapshot: [[String: Data]],
+        on pasteboard: NSPasteboard,
+        onlyIfChangeCountMatches expectedChangeCount: Int
+    ) {
+        guard pasteboard.changeCount == expectedChangeCount else { return }
 
-        // Simulate Cmd+V
-        guard let source = CGEventSource(stateID: .hidSystemState) else { return }
+        pasteboard.clearContents()
 
-        // Key down
-        guard let keyDown = CGEvent(
-            keyboardEventSource: source,
-            virtualKey: KeyCode.v.rawValue,
-            keyDown: true
-        ) else { return }
-        keyDown.flags.insert(KeyCode.commandMask)
-        keyDown.post(tap: .cghidEventTap)
+        guard !snapshot.isEmpty else { return }
 
-        // Key up
-        guard let keyUp = CGEvent(
-            keyboardEventSource: source,
-            virtualKey: KeyCode.v.rawValue,
-            keyDown: false
-        ) else { return }
-        keyUp.flags.insert(KeyCode.commandMask)
-        keyUp.post(tap: .cghidEventTap)
-
-        // Restore clipboard after a short delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            if let previousContents = previousContents {
-                NSPasteboard.general.clearContents()
-                for item in previousContents {
-                    let pasteboardItem = NSPasteboardItem()
-                    for (type, data) in item {
-                        pasteboardItem.setData(data, forType: NSPasteboard.PasteboardType(rawValue: type))
-                    }
-                    NSPasteboard.general.writeObjects([pasteboardItem])
-                }
+        let restoredItems = snapshot.map { itemData -> NSPasteboardItem in
+            let item = NSPasteboardItem()
+            for (type, data) in itemData {
+                item.setData(data, forType: NSPasteboard.PasteboardType(rawValue: type))
             }
+            return item
         }
+
+        pasteboard.writeObjects(restoredItems)
     }
 }
