@@ -18,14 +18,28 @@ import Observation
     private let targetSampleRate: Double = 16000.0
     private let lock = NSLock()
     private var converter: AVAudioConverter?
+    private var hasInstalledTap = false
 
     init() {}
 
     func startRecording(microphoneID: String?) throws {
+        audioEngine.stop()
+        audioEngine.reset()
+        if hasInstalledTap {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            hasInstalledTap = false
+        }
+
+        lock.lock()
+        audioBuffer.removeAll()
+        lock.unlock()
+
+        try configureInputDevice(microphoneID)
+
         let inputNode = audioEngine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
-        // Create converter to 16kHz mono Float32
+        // 16kHz モノラル Float32 に変換する
         guard
             let outputFormat = AVAudioFormat(
                 commonFormat: .pcmFormatFloat32,
@@ -43,7 +57,7 @@ import Observation
 
         let targetSampleRate = self.targetSampleRate
 
-        // Install tap with nil format to use engine's default format
+        // エンジン側の実入力フォーマットを使う
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] buffer, _ in
             guard let self = self else { return }
             guard let converter = self.converter else { return }
@@ -70,7 +84,7 @@ import Observation
                 return
             }
 
-            // Convert to [Float]
+            // Float 配列へ変換する
             guard let channelData = convertedBuffer.floatChannelData else { return }
             let samples = Array(
                 UnsafeBufferPointer(
@@ -82,7 +96,7 @@ import Observation
             self.audioBuffer.append(contentsOf: samples)
             self.lock.unlock()
 
-            // Calculate RMS level
+            // 録音レベル表示用の RMS を計算する
             let rms = sqrt(samples.reduce(0) { $0 + $1 * $1 } / Float(max(samples.count, 1)))
             let normalizedLevel = min(max(rms * 5.0, 0.0), 1.0)
 
@@ -90,6 +104,7 @@ import Observation
                 self?.audioLevel = normalizedLevel
             }
         }
+        hasInstalledTap = true
 
         audioEngine.prepare()
         try audioEngine.start()
@@ -100,8 +115,12 @@ import Observation
     }
 
     func stopRecording() -> [Float] {
-        audioEngine.inputNode.removeTap(onBus: 0)
+        if hasInstalledTap {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            hasInstalledTap = false
+        }
         audioEngine.stop()
+        audioEngine.reset()
         isRecording = false
         Task { @MainActor [weak self] in
             self?.audioLevel = 0.0
@@ -116,8 +135,12 @@ import Observation
     }
 
     func cancelRecording() {
-        audioEngine.inputNode.removeTap(onBus: 0)
+        if hasInstalledTap {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            hasInstalledTap = false
+        }
         audioEngine.stop()
+        audioEngine.reset()
         isRecording = false
         Task { @MainActor [weak self] in
             self?.audioLevel = 0.0
@@ -126,6 +149,65 @@ import Observation
         lock.lock()
         audioBuffer.removeAll()
         lock.unlock()
+    }
+
+    private func configureInputDevice(_ microphoneID: String?) throws {
+        let deviceID: AudioDeviceID
+
+        if let microphoneID, !microphoneID.isEmpty {
+            guard let parsedDeviceID = AudioDeviceID(microphoneID) else {
+                throw NSError(
+                    domain: "AudioCaptureManager",
+                    code: -2,
+                    userInfo: [NSLocalizedDescriptionKey: "The selected microphone is invalid."]
+                )
+            }
+            deviceID = parsedDeviceID
+        } else {
+            deviceID = try Self.defaultInputDeviceID()
+        }
+
+        do {
+            try audioEngine.inputNode.auAudioUnit.setDeviceID(deviceID)
+        } catch {
+            throw NSError(
+                domain: "AudioCaptureManager",
+                code: -3,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Failed to switch the recording device. Reconnect the microphone and try again."
+                ]
+            )
+        }
+    }
+
+    private static func defaultInputDeviceID() throws -> AudioDeviceID {
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        var deviceID = AudioDeviceID(0)
+        var dataSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0,
+            nil,
+            &dataSize,
+            &deviceID
+        )
+
+        guard status == noErr, deviceID != AudioDeviceID(0) else {
+            throw NSError(
+                domain: "AudioCaptureManager",
+                code: -4,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to resolve the system default microphone."]
+            )
+        }
+
+        return deviceID
     }
 
     static func availableMicrophones() -> [(id: String, name: String)] {
@@ -163,7 +245,7 @@ import Observation
         var microphones: [(id: String, name: String)] = []
 
         for deviceID in deviceIDs {
-            // Check if device has input channels
+            // 入力チャンネルを持つデバイスだけを対象にする
             var streamAddress = AudioObjectPropertyAddress(
                 mSelector: kAudioDevicePropertyStreams,
                 mScope: kAudioObjectPropertyScopeInput,
@@ -181,7 +263,7 @@ import Observation
 
             guard status == noErr, streamSize > 0 else { continue }
 
-            // Get device name using CFString properly
+            // デバイス名を取得する
             var nameAddress = AudioObjectPropertyAddress(
                 mSelector: kAudioObjectPropertyName,
                 mScope: kAudioObjectPropertyScopeGlobal,

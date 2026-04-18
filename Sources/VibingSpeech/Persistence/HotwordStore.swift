@@ -47,11 +47,13 @@ import Observation
         save()
     }
 
-    /// Flat list of hotword strings for passing to the ASR prompt.
-    /// Currently unused — Qwen3-ASR's `transcribe` API does not yet accept a hotwords parameter.
-    /// Retained for future integration when the API supports it.
     var hotwordTexts: [String] {
         hotwords.map { $0.text }
+    }
+
+    var recognitionContext: String? {
+        guard !hotwordTexts.isEmpty else { return nil }
+        return "Recognize these terms accurately when they are spoken: \(hotwordTexts.joined(separator: ", "))"
     }
 
     private func save() {

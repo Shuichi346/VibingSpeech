@@ -51,10 +51,22 @@ struct MainContentView: View {
         .frame(minWidth: 700, minHeight: 500)
         .preferredColorScheme(appState.settings.appearanceMode.colorScheme())
         .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
+            if let lastError = appState.lastError {
+                HStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                    Text(lastError)
+                        .font(.caption)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button("Dismiss") {
+                        appState.clearLastError()
+                    }
+                    .buttonStyle(.borderless)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(.thinMaterial)
             }
-            .padding(.vertical, 8)
         }
     }
 }

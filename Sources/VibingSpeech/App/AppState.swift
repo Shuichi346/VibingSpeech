@@ -27,6 +27,9 @@ import Observation
 
     private(set) var recordingState: RecordingState = .idle
     private(set) var lastError: String?
+    private(set) var hotkeyErrorMessage: String?
+    private(set) var isAccessibilityGranted = PermissionChecker.isAccessibilityGranted
+    private(set) var pendingModelVariant: ASRModelVariant?
 
     private var hotkeyPressedAt: Date?
     private var isToggleMode = false
@@ -34,30 +37,32 @@ import Observation
 
     var onRecordingStateChanged: ((RecordingState) -> Void)?
 
+    var selectedModelForUI: ASRModelVariant {
+        pendingModelVariant ?? transcriptionEngine.currentVariant ?? settings.selectedModel
+    }
+
+    var isHotkeyReady: Bool {
+        hotkeyManager.isRunning && hotkeyErrorMessage == nil
+    }
+
     init() {
         self.settings = SettingsStore()
         self.history = HistoryStore()
         self.hotwords = HotwordStore()
+        self.history.pruneIfNeeded(retention: settings.historyRetention)
         setupHotkeyCallbacks()
     }
 
     func setup() async {
-        PermissionChecker.requestAccessibilityIfNeeded()
+        configureHotkeyMonitoring(promptIfNeeded: true)
 
         let micGranted = await PermissionChecker.requestMicrophoneAccess()
         if !micGranted {
             lastError = "Microphone permission is required to use this app."
         }
 
-        hotkeyManager.start(keyCode: KeyCode.rightOption.rawValue)
+        await switchModel(settings.selectedModel)
 
-        do {
-            try await transcriptionEngine.loadModel(settings.selectedModel)
-        } catch {
-            lastError = "Failed to load ASR model: \(error.localizedDescription)"
-        }
-
-        // Load text processing model if enabled
         if settings.textProcessingEnabled {
             do {
                 try await textProcessingEngine.loadModel()
@@ -67,7 +72,27 @@ import Observation
         }
     }
 
-    /// Toggle text processing on/off. Loads/unloads the LLM model accordingly.
+    func clearLastError() {
+        lastError = nil
+    }
+
+    func openAccessibilitySettings() {
+        PermissionChecker.openAccessibilitySettings()
+    }
+
+    func retryHotkeySetup() {
+        configureHotkeyMonitoring(promptIfNeeded: false)
+    }
+
+    func updateRecordingHotkey(_ hotkey: SettingsStore.RecordingHotkey) {
+        settings.recordingHotkey = hotkey
+        hotkeyManager.updateHotkey(hotkey.keyCode)
+
+        if !hotkeyManager.isRunning && isAccessibilityGranted {
+            configureHotkeyMonitoring(promptIfNeeded: false)
+        }
+    }
+
     func setTextProcessingEnabled(_ enabled: Bool) async {
         settings.textProcessingEnabled = enabled
         if enabled {
@@ -82,6 +107,45 @@ import Observation
             }
         } else {
             textProcessingEngine.unloadModel()
+        }
+    }
+
+    func switchModel(_ variant: ASRModelVariant) async {
+        guard recordingState == .idle else {
+            lastError = "You can't switch the ASR model while recording or transcribing."
+            return
+        }
+
+        pendingModelVariant = variant
+        defer {
+            pendingModelVariant = nil
+        }
+
+        do {
+            try await transcriptionEngine.loadModel(variant)
+            settings.selectedModel = variant
+        } catch {
+            lastError = "Failed to load ASR model: \(error.localizedDescription)"
+        }
+    }
+
+    private func configureHotkeyMonitoring(promptIfNeeded: Bool) {
+        isAccessibilityGranted = PermissionChecker.requestAccessibilityIfNeeded(
+            prompt: promptIfNeeded
+        )
+
+        guard isAccessibilityGranted else {
+            hotkeyManager.stop()
+            hotkeyErrorMessage =
+                "Accessibility permission is required for the global hotkey. Enable it in System Settings, then retry setup."
+            return
+        }
+
+        do {
+            try hotkeyManager.start(keyCode: settings.recordingHotkey.keyCode)
+            hotkeyErrorMessage = nil
+        } catch {
+            hotkeyErrorMessage = error.localizedDescription
         }
     }
 
@@ -146,31 +210,40 @@ import Observation
 
     private func stopRecordingAndTranscribe() {
         let audioSamples = audioCapture.stopRecording()
+        let audioDuration = Double(audioSamples.count) / 16000.0
         SoundFeedback.playStopSound(isEnabled: settings.soundFeedbackEnabled)
         recordingState = .transcribing
         onRecordingStateChanged?(.transcribing)
 
-        let pressedAt = hotkeyPressedAt
         let textProcessingEnabled = settings.textProcessingEnabled
         let textProcessingPreset = settings.textProcessingPreset
         let customPrompt = settings.customTextProcessingPrompt
-        let currentVariant = transcriptionEngine.currentVariant ?? .defaultVariant
+        let currentVariant = transcriptionEngine.currentVariant ?? settings.selectedModel
         let configuredLanguage = settings.language
+        let asrLanguageHint = asrLanguageHint(from: configuredLanguage)
+        let hotwordContext = hotwords.recognitionContext
 
-        Task { [weak self] in
-            guard let self = self else { return }
+        hotkeyPressedAt = nil
+        isToggleMode = false
 
-            let rawText = self.transcriptionEngine.transcribe(audio: audioSamples)
+        Task(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+
+            let rawText = await self.transcriptionEngine.transcribe(
+                audio: audioSamples,
+                languageHint: asrLanguageHint,
+                context: hotwordContext
+            )
 
             if !rawText.isEmpty {
-                // Detect language from the transcription output
                 let detectedLanguage = self.detectLanguage(
-                    from: rawText, configured: configuredLanguage)
+                    from: rawText,
+                    configured: configuredLanguage
+                )
 
                 var finalText = rawText
                 var originalText: String? = nil
 
-                // Apply text processing if enabled and model is loaded
                 if textProcessingEnabled && self.textProcessingEngine.isModelLoaded {
                     do {
                         let processed = try await self.textProcessingEngine.processText(
@@ -179,12 +252,11 @@ import Observation
                             detectedLanguage: detectedLanguage,
                             customPrompt: customPrompt
                         )
-                        // Store the original transcription before LLM processing
                         originalText = rawText
                         finalText = processed
                     } catch {
-                        // If processing fails, fall back to raw text (originalText stays nil)
-                        print("Text processing failed: \(error). Using raw transcription.")
+                        self.lastError =
+                            "Text processing failed. The raw transcription was pasted instead."
                         finalText = rawText
                     }
                 }
@@ -194,7 +266,7 @@ import Observation
                 let record = TranscriptionRecord(
                     text: finalText,
                     originalText: originalText,
-                    durationSeconds: Date().timeIntervalSince(pressedAt ?? Date()),
+                    durationSeconds: audioDuration,
                     modelVariant: currentVariant
                 )
                 self.history.add(record)
@@ -206,18 +278,14 @@ import Observation
         }
     }
 
-    /// Detect the language of transcribed text.
-    /// If the user configured a specific language, use that.
-    /// Otherwise, use a simple heuristic based on character analysis.
     private func detectLanguage(from text: String, configured: String) -> String {
         if configured != "auto" {
             return configured
         }
 
-        // Simple heuristic: check for CJK characters
         let cjkRanges: [ClosedRange<Unicode.Scalar>] = [
-            Unicode.Scalar(0x3040)!...Unicode.Scalar(0x309F)!,  // Hiragana
-            Unicode.Scalar(0x30A0)!...Unicode.Scalar(0x30FF)!,  // Katakana
+            Unicode.Scalar(0x3040)!...Unicode.Scalar(0x309F)!,
+            Unicode.Scalar(0x30A0)!...Unicode.Scalar(0x30FF)!,
         ]
         let kanjiRange = Unicode.Scalar(0x4E00)!...Unicode.Scalar(0x9FFF)!
         let hangulRange = Unicode.Scalar(0xAC00)!...Unicode.Scalar(0xD7AF)!
@@ -231,7 +299,7 @@ import Observation
             if cjkRanges.contains(where: { $0.contains(scalar) }) {
                 japaneseCount += 1
             } else if kanjiRange.contains(scalar) {
-                chineseCount += 1  // Could be Japanese kanji too
+                chineseCount += 1
             } else if hangulRange.contains(scalar) {
                 koreanCount += 1
             } else if scalar.isASCII && scalar.properties.isAlphabetic {
@@ -239,7 +307,6 @@ import Observation
             }
         }
 
-        // If Japanese kana found, it's Japanese (kanji alone is ambiguous)
         if japaneseCount > 0 {
             return "ja"
         }
@@ -249,7 +316,16 @@ import Observation
         if chineseCount > 3 && latinCount < chineseCount {
             return "zh"
         }
-        return "en"
+        return "unknown"
+    }
+
+    private func asrLanguageHint(from configuredLanguage: String) -> String? {
+        switch configuredLanguage {
+        case "en": return "English"
+        case "ja": return "Japanese"
+        case "zh": return "Chinese"
+        default: return nil
+        }
     }
 
     private func cancelRecording() {
@@ -257,12 +333,7 @@ import Observation
         SoundFeedback.playErrorSound(isEnabled: settings.soundFeedbackEnabled)
         recordingState = .idle
         isToggleMode = false
+        hotkeyPressedAt = nil
         onRecordingStateChanged?(.idle)
-    }
-
-    func switchModel(_ variant: ASRModelVariant) async throws {
-        guard recordingState == .idle else { return }
-        settings.selectedModel = variant
-        try await transcriptionEngine.loadModel(variant)
     }
 }

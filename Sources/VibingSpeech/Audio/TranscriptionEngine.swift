@@ -10,10 +10,36 @@ import Foundation
 import Observation
 import Qwen3ASR
 
-// import MLX
+private actor TranscriptionModelStore {
+    private var model: Qwen3ASRModel?
+
+    func loadModel(_ variant: ASRModelVariant) async throws {
+        let loadedModel = try await Qwen3ASRModel.fromPretrained(modelId: variant.modelId)
+        model = loadedModel
+    }
+
+    func transcribe(
+        audio: [Float],
+        sampleRate: Int,
+        languageHint: String?,
+        context: String?
+    ) -> String {
+        guard let model else {
+            return ""
+        }
+
+        return model.transcribe(
+            audio: audio,
+            sampleRate: sampleRate,
+            language: languageHint,
+            context: context
+        )
+    }
+}
 
 @Observable @MainActor final class TranscriptionEngine {
-    private var model: Qwen3ASRModel?
+    private let modelStore = TranscriptionModelStore()
+
     private(set) var currentVariant: ASRModelVariant?
     private(set) var isModelLoaded = false
     private(set) var isLoading = false
@@ -33,27 +59,32 @@ import Qwen3ASR
             isLoading = false
         }
 
-        // Unload existing model first
-        model = nil
-        isModelLoaded = false
-
         do {
-            model = try await Qwen3ASRModel.fromPretrained(modelId: variant.modelId)
+            try await modelStore.loadModel(variant)
             currentVariant = variant
             isModelLoaded = true
             loadingProgress = "Ready"
         } catch {
+            if !isModelLoaded {
+                currentVariant = nil
+            }
             loadingProgress = "Failed to load model: \(error.localizedDescription)"
             throw error
         }
     }
 
-    func transcribe(audio: [Float], sampleRate: Int = 16000) -> String {
-        guard let model = model else {
-            return ""
-        }
-
-        let result = model.transcribe(audio: audio, sampleRate: sampleRate)
-        return result.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+    func transcribe(
+        audio: [Float],
+        sampleRate: Int = 16000,
+        languageHint: String? = nil,
+        context: String? = nil
+    ) async -> String {
+        let result = await modelStore.transcribe(
+            audio: audio,
+            sampleRate: sampleRate,
+            languageHint: languageHint,
+            context: context
+        )
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

@@ -10,10 +10,27 @@ import AppKit
 import CoreGraphics
 import Observation
 
+enum GlobalHotkeyError: LocalizedError, Sendable {
+    case accessibilityPermissionRequired
+    case failedToCreateEventTap
+
+    var errorDescription: String? {
+        switch self {
+        case .accessibilityPermissionRequired:
+            return "Accessibility permission is required to use the global hotkey."
+        case .failedToCreateEventTap:
+            return "Failed to start the global hotkey monitor."
+        }
+    }
+}
+
 @Observable final class GlobalHotkeyManager: @unchecked Sendable {
     @MainActor var onHotkeyDown: (() -> Void)?
     @MainActor var onHotkeyUp: (() -> Void)?
     @MainActor var onEscapePressed: (() -> Void)?
+
+    private(set) var isRunning = false
+    private(set) var lastErrorMessage: String?
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -22,8 +39,16 @@ import Observation
 
     init() {}
 
-    func start(keyCode: UInt16) {
+    func start(keyCode: UInt16) throws {
+        stop()
         self.hotkeyCode = keyCode
+        lastErrorMessage = nil
+
+        guard PermissionChecker.isAccessibilityGranted else {
+            isRunning = false
+            lastErrorMessage = GlobalHotkeyError.accessibilityPermissionRequired.localizedDescription
+            throw GlobalHotkeyError.accessibilityPermissionRequired
+        }
 
         let eventMask =
             CGEventMask(1 << CGEventType.flagsChanged.rawValue)
@@ -37,17 +62,18 @@ import Observation
                 options: .listenOnly,
                 eventsOfInterest: eventMask,
                 callback: { _, type, event, userInfo in
-                    guard let userInfo = userInfo else { return Unmanaged.passRetained(event) }
+                    guard let userInfo = userInfo else { return Unmanaged.passUnretained(event) }
                     let manager = Unmanaged<GlobalHotkeyManager>.fromOpaque(userInfo)
                         .takeUnretainedValue()
                     manager.handleEvent(type: type, event: event)
-                    return Unmanaged.passRetained(event)
+                    return Unmanaged.passUnretained(event)
                 },
                 userInfo: Unmanaged.passUnretained(self).toOpaque()
             )
         else {
-            print("Failed to create event tap. Accessibility permission required.")
-            return
+            isRunning = false
+            lastErrorMessage = GlobalHotkeyError.failedToCreateEventTap.localizedDescription
+            throw GlobalHotkeyError.failedToCreateEventTap
         }
 
         self.eventTap = eventTap
@@ -58,9 +84,13 @@ import Observation
         }
 
         CGEvent.tapEnable(tap: eventTap, enable: true)
+        isRunning = true
     }
 
     func stop() {
+        isHotkeyHeld = false
+        isRunning = false
+
         if let eventTap = eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
             CFMachPortInvalidate(eventTap)
@@ -78,6 +108,11 @@ import Observation
     }
 
     private func handleEvent(type: CGEventType, event: CGEvent) {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            recoverEventTap()
+            return
+        }
+
         if type == .flagsChanged {
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
 
@@ -115,6 +150,19 @@ import Observation
                 }
             }
         }
+    }
+
+    private func recoverEventTap() {
+        guard let eventTap else { return }
+
+        if isHotkeyHeld {
+            isHotkeyHeld = false
+            DispatchQueue.main.async { [weak self] in
+                self?.onHotkeyUp?()
+            }
+        }
+
+        CGEvent.tapEnable(tap: eventTap, enable: true)
     }
 
     deinit {
