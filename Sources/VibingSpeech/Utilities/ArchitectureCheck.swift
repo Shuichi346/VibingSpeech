@@ -11,9 +11,9 @@ import AppKit
 enum ArchitectureCheck {
     static var isAppleSilicon: Bool {
         #if arch(arm64)
-        return true
+            return true
         #else
-        return false
+            return false
         #endif
     }
 

@@ -18,18 +18,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Task { @MainActor in
             self.appState = AppState()
-            
+
             ArchitectureCheck.ensureAppleSilicon()
-            
+
             NSApp.setActivationPolicy(.accessory)
 
             statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-            statusItem?.button?.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "VibingSpeech")
+            statusItem?.button?.image = NSImage(
+                systemSymbolName: "mic.fill", accessibilityDescription: "VibingSpeech")
 
             let menu = NSMenu()
-            menu.addItem(NSMenuItem(title: "Show Window", action: #selector(showWindow), keyEquivalent: ""))
+            menu.addItem(
+                NSMenuItem(title: "Show Window", action: #selector(showWindow), keyEquivalent: ""))
             menu.addItem(.separator())
-            menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApp.terminate), keyEquivalent: "q"))
+            menu.addItem(
+                NSMenuItem(title: "Quit", action: #selector(NSApp.terminate), keyEquivalent: "q"))
 
             statusItem?.menu = menu
 
@@ -46,7 +49,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             // Setup app state
             await appState.setup()
-            
+
             // Show main window on launch
             showWindow()
 

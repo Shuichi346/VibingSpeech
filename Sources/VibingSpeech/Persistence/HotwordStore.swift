@@ -19,8 +19,10 @@ import Observation
         if let directoryURL = directoryURL {
             baseURL = directoryURL
         } else {
-            baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-                .appendingPathComponent("VibingSpeech")
+            baseURL = FileManager.default.urls(
+                for: .applicationSupportDirectory, in: .userDomainMask
+            ).first!
+            .appendingPathComponent("VibingSpeech")
         }
 
         try? FileManager.default.createDirectory(at: baseURL, withIntermediateDirectories: true)
@@ -32,7 +34,9 @@ import Observation
     func add(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        guard !hotwords.contains(where: { $0.text.lowercased() == trimmed.lowercased() }) else { return }
+        guard !hotwords.contains(where: { $0.text.lowercased() == trimmed.lowercased() }) else {
+            return
+        }
 
         hotwords.append(Hotword(text: trimmed))
         save()

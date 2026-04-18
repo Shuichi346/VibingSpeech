@@ -25,23 +25,27 @@ import Observation
     func start(keyCode: UInt16) {
         self.hotkeyCode = keyCode
 
-        let eventMask = CGEventMask(1 << CGEventType.flagsChanged.rawValue) |
-                        CGEventMask(1 << CGEventType.keyDown.rawValue) |
-                        CGEventMask(1 << CGEventType.keyUp.rawValue)
+        let eventMask =
+            CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+            | CGEventMask(1 << CGEventType.keyDown.rawValue)
+            | CGEventMask(1 << CGEventType.keyUp.rawValue)
 
-        guard let eventTap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .listenOnly,
-            eventsOfInterest: eventMask,
-            callback: { _, type, event, userInfo in
-                guard let userInfo = userInfo else { return Unmanaged.passRetained(event) }
-                let manager = Unmanaged<GlobalHotkeyManager>.fromOpaque(userInfo).takeUnretainedValue()
-                manager.handleEvent(type: type, event: event)
-                return Unmanaged.passRetained(event)
-            },
-            userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else {
+        guard
+            let eventTap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap,
+                place: .headInsertEventTap,
+                options: .listenOnly,
+                eventsOfInterest: eventMask,
+                callback: { _, type, event, userInfo in
+                    guard let userInfo = userInfo else { return Unmanaged.passRetained(event) }
+                    let manager = Unmanaged<GlobalHotkeyManager>.fromOpaque(userInfo)
+                        .takeUnretainedValue()
+                    manager.handleEvent(type: type, event: event)
+                    return Unmanaged.passRetained(event)
+                },
+                userInfo: Unmanaged.passUnretained(self).toOpaque()
+            )
+        else {
             print("Failed to create event tap. Accessibility permission required.")
             return
         }

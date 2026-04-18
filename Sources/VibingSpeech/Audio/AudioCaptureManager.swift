@@ -7,8 +7,8 @@
 //
 
 @preconcurrency import AVFoundation
-import Observation
 import CoreAudio
+import Observation
 
 @Observable final class AudioCaptureManager: @unchecked Sendable {
     private let audioEngine = AVAudioEngine()
@@ -26,14 +26,17 @@ import CoreAudio
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
         // Create converter to 16kHz mono Float32
-        guard let outputFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: targetSampleRate,
-            channels: 1,
-            interleaved: false
-        ) else {
-            throw NSError(domain: "AudioCaptureManager", code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Failed to create output audio format"])
+        guard
+            let outputFormat = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: targetSampleRate,
+                channels: 1,
+                interleaved: false
+            )
+        else {
+            throw NSError(
+                domain: "AudioCaptureManager", code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create output audio format"])
         }
 
         converter = AVAudioConverter(from: inputFormat, to: outputFormat)
@@ -48,10 +51,12 @@ import CoreAudio
             let capacity = AVAudioFrameCount(
                 Double(buffer.frameLength) * targetSampleRate / inputFormat.sampleRate
             )
-            guard let convertedBuffer = AVAudioPCMBuffer(
-                pcmFormat: outputFormat,
-                frameCapacity: capacity
-            ) else { return }
+            guard
+                let convertedBuffer = AVAudioPCMBuffer(
+                    pcmFormat: outputFormat,
+                    frameCapacity: capacity
+                )
+            else { return }
 
             var error: NSError?
             let inputBuffer = buffer
@@ -67,10 +72,11 @@ import CoreAudio
 
             // Convert to [Float]
             guard let channelData = convertedBuffer.floatChannelData else { return }
-            let samples = Array(UnsafeBufferPointer(
-                start: channelData[0],
-                count: Int(convertedBuffer.frameLength)
-            ))
+            let samples = Array(
+                UnsafeBufferPointer(
+                    start: channelData[0],
+                    count: Int(convertedBuffer.frameLength)
+                ))
 
             self.lock.lock()
             self.audioBuffer.append(contentsOf: samples)

@@ -12,8 +12,11 @@ let package = Package(
         .package(url: "https://github.com/soniqo/speech-swift", from: "0.0.9"),
         .package(
             url: "https://github.com/ml-explore/mlx-swift-lm",
-            exact: "2.31.3"
+            exact: "3.31.3"
         ),
+        // Required by mlx-swift-lm v3: HuggingFace downloader + tokenizer
+        .package(url: "https://github.com/huggingface/swift-huggingface", from: "0.9.0"),
+        .package(url: "https://github.com/huggingface/swift-transformers", from: "1.3.0"),
     ],
     targets: [
         .executableTarget(
@@ -23,6 +26,9 @@ let package = Package(
                 .product(name: "AudioCommon", package: "speech-swift"),
                 .product(name: "MLXLLM", package: "mlx-swift-lm"),
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+                .product(name: "MLXHuggingFace", package: "mlx-swift-lm"),
+                .product(name: "HuggingFace", package: "swift-huggingface"),
+                .product(name: "Tokenizers", package: "swift-transformers"),
             ],
             path: "Sources/VibingSpeech",
             swiftSettings: [

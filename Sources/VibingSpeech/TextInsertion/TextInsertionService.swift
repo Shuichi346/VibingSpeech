@@ -30,20 +30,24 @@ enum TextInsertionService {
         guard let source = CGEventSource(stateID: .hidSystemState) else { return }
 
         // Key down
-        guard let keyDown = CGEvent(
-            keyboardEventSource: source,
-            virtualKey: KeyCode.v.rawValue,
-            keyDown: true
-        ) else { return }
+        guard
+            let keyDown = CGEvent(
+                keyboardEventSource: source,
+                virtualKey: KeyCode.v.rawValue,
+                keyDown: true
+            )
+        else { return }
         keyDown.flags.insert(KeyCode.commandMask)
         keyDown.post(tap: .cghidEventTap)
 
         // Key up
-        guard let keyUp = CGEvent(
-            keyboardEventSource: source,
-            virtualKey: KeyCode.v.rawValue,
-            keyDown: false
-        ) else { return }
+        guard
+            let keyUp = CGEvent(
+                keyboardEventSource: source,
+                virtualKey: KeyCode.v.rawValue,
+                keyDown: false
+            )
+        else { return }
         keyUp.flags.insert(KeyCode.commandMask)
         keyUp.post(tap: .cghidEventTap)
 
@@ -54,7 +58,8 @@ enum TextInsertionService {
                 for item in previousContents {
                     let pasteboardItem = NSPasteboardItem()
                     for (type, data) in item {
-                        pasteboardItem.setData(data, forType: NSPasteboard.PasteboardType(rawValue: type))
+                        pasteboardItem.setData(
+                            data, forType: NSPasteboard.PasteboardType(rawValue: type))
                     }
                     NSPasteboard.general.writeObjects([pasteboardItem])
                 }
