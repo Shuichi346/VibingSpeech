@@ -1,13 +1,8 @@
-//
 //  PermissionChecker.swift
 //  VibingSpeech
-//
-//  Created by Shuichi on 2026/04/12.
-//  Copyright © 2026 Shuichi. All rights reserved.
-//
 
-import AppKit
 import AVFoundation
+import AppKit
 
 enum PermissionChecker {
     static var isAccessibilityGranted: Bool {
@@ -31,7 +26,8 @@ enum PermissionChecker {
     static func openAccessibilitySettings() {
         guard
             let url = URL(
-                string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+                string:
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
             )
         else {
             return

@@ -1,10 +1,5 @@
-//
 //  AppState.swift
 //  VibingSpeech
-//
-//  Created by Shuichi on 2026/04/12.
-//  Copyright © 2026 Shuichi. All rights reserved.
-//
 
 import Foundation
 import Observation
@@ -278,15 +273,6 @@ import Observation
         }
     }
 
-    /// Detect language from transcribed text.
-    ///
-    /// When the language setting is not "auto", returns the configured language directly.
-    /// In auto mode, uses Unicode script analysis with Latin-script heuristics:
-    /// - Japanese kana → "ja"
-    /// - Korean hangul → "ko"
-    /// - CJK ideographs dominant over Latin → "zh"
-    /// - Latin-dominant text → "en" (most ASR output in Latin script is English)
-    /// - No identifiable characters → "unknown"
     private func detectLanguage(from text: String, configured: String) -> String {
         if configured != "auto" {
             return configured
@@ -309,9 +295,7 @@ import Observation
                 chineseCount += 1
             } else if hangulRange.contains(scalar) {
                 koreanCount += 1
-            } else if scalar.properties.isAlphabetic
-                && scalar.value < 0x0250
-            {
+            } else if scalar.properties.isAlphabetic && scalar.value < 0x0250 {
                 latinCount += 1
             }
         }
@@ -331,10 +315,6 @@ import Observation
         return "unknown"
     }
 
-    /// Map configured language code to the hint string expected by Qwen3-ASR.
-    ///
-    /// Returns `nil` for "auto" (let the model detect) and for any code not yet mapped.
-    /// Extensible: add new cases here when the UI language picker gains entries.
     private func asrLanguageHint(from configuredLanguage: String) -> String? {
         switch configuredLanguage {
         case "auto": return nil
@@ -342,13 +322,6 @@ import Observation
         case "ja": return "Japanese"
         case "zh": return "Chinese"
         case "ko": return "Korean"
-        case "fr": return "French"
-        case "de": return "German"
-        case "es": return "Spanish"
-        case "pt": return "Portuguese"
-        case "ru": return "Russian"
-        case "ar": return "Arabic"
-        case "it": return "Italian"
         default: return nil
         }
     }
