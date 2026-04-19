@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-macOS%2026%2B-blue" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-macOS%2015%2B-blue" alt="Platform">
   <img src="https://img.shields.io/badge/chip-Apple%20Silicon-black" alt="Apple Silicon">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/swift-6.2-orange" alt="Swift">
@@ -60,7 +60,7 @@
 
 ## Requirements
 
-- macOS 26.0+ (Tahoe)
+- macOS 15.0+ (Sequoia) — tested on macOS 26 (Tahoe)
 - Apple Silicon (M1 or later)
 - **Xcode 26+** (full installation from App Store — Command Line Tools alone are not sufficient)
 - Internet connection (for first-time model downloads, ~1–4.8 GB)

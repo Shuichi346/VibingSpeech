@@ -1,5 +1,61 @@
 # Code Deletion Log
 
+## [2026-04-19] Bug Fix Session — Remaining Issues Resolution
+
+### Critical: detectLanguage() returns "unknown" for English/Latin text
+- Sources/VibingSpeech/App/AppState.swift — `detectLanguage(from:configured:)` now returns `"en"` when `latinCount > 0` instead of falling through to `"unknown"`
+- Sources/VibingSpeech/App/AppState.swift — Latin character detection broadened from `scalar.isASCII && scalar.properties.isAlphabetic` to `scalar.properties.isAlphabetic && scalar.value < 0x0250` (covers accented Latin characters)
+- Sources/VibingSpeech/Models/TextProcessingPreset.swift — `systemPrompt(detectedLanguage:)` added `"ko"` case with Korean instruction
+- Sources/VibingSpeech/Models/TextProcessingPreset.swift — `default` case changed from `"Respond in the same language as the input text."` to `"Detect the language of the input text and always respond in that same language."`
+
+### Critical: AppDelegate.appState declared with `!` — crash risk on pre-initialization access
+- Sources/VibingSpeech/App/AppDelegate.swift — `appState` type changed from `AppState!` (implicitly unwrapped optional) to `AppState?` (regular optional)
+- Sources/VibingSpeech/App/AppDelegate.swift — `AppState()` creation moved out of `Task` block to synchronous initialization at the start of `applicationDidFinishLaunching`
+- Sources/VibingSpeech/App/AppDelegate.swift — `showWindow()` now guards on `appState` being non-nil before proceeding
+- Sources/VibingSpeech/App/AppDelegate.swift — `onRecordingStateChanged` callback setup moved into the `Task` block after `await state.setup()`
+
+### High: AVAudioConverter input block data duplication when called multiple times
+- Sources/VibingSpeech/Audio/AudioCaptureManager.swift — Added `var inputConsumed = false` flag inside `installTap` closure
+- Sources/VibingSpeech/Audio/AudioCaptureManager.swift — Input block now returns `nil` with `.noDataNow` on subsequent calls after the first, preventing audio data duplication during sample rate conversion
+- Sources/VibingSpeech/Audio/AudioCaptureManager.swift — Added `guard capacity > 0` and `guard frameCount > 0` safety checks
+
+### Medium: asrLanguageHint() expanded for Korean
+- Sources/VibingSpeech/App/AppState.swift — `asrLanguageHint(from:)` added `"ko"` → `"Korean"` mapping
+- Sources/VibingSpeech/App/AppState.swift — `"auto"` case made explicit (returns `nil`)
+
+### Medium: OverlayState.deinit Timer.invalidate() called nonisolated
+- Sources/VibingSpeech/Views/Overlay/RecordingOverlayPanel.swift — `OverlayState.deinit` changed to capture timer into local variable and dispatch `invalidate()` via `DispatchQueue.main.async` for thread-safe cleanup
+
+### Medium: Hotwords context text format suboptimal for ASR decoder prompt prefix
+- Sources/VibingSpeech/Persistence/HotwordStore.swift — `recognitionContext` format changed from `"Recognize these terms accurately when they are spoken: word1, word2"` to `"Key terms: word1, word2"` (concise word-list format for decoder prompt prefix)
+
+### Low: No user notification on save() failure
+- Sources/VibingSpeech/Persistence/HistoryStore.swift — Added `lastSaveError: String?` property, set on save failure, cleared on success
+- Sources/VibingSpeech/Persistence/HotwordStore.swift — Added `lastSaveError: String?` property, set on save failure, cleared on success
+
+### Low: Microphone list fetched every View re-render
+- Sources/VibingSpeech/Views/MainWindow/HomeView.swift — Added `@State private var cachedMicrophones` populated in `.onAppear`
+- Sources/VibingSpeech/Views/MainWindow/HomeView.swift — Microphone `Picker` now iterates over cached list instead of calling `AudioCaptureManager.availableMicrophones()` on every `body` evaluation
+
+### Low: Package.swift platforms and README requirements inconsistent
+- README.md — Requirements changed from `macOS 26.0+ (Tahoe)` to `macOS 15.0+ (Sequoia) — tested on macOS 26 (Tahoe)`, aligning with `Package.swift` `.macOS("15.0")` and Makefile `LSMinimumSystemVersion`
+- README.md — Platform badge updated from `macOS%2026%2B` to `macOS%2015%2B`
+
+### Not changed (confirmed safe)
+- Issue #6 (Qwen3.5-4B-MLX-4bit VLM compatibility): `model_type: "qwen3_5"` is registered in `LLMTypeRegistry` as `Qwen35Model`; vision weights are sanitized during LLM weight loading. No code change needed.
+- Issue #9 (ChatSession created every time): By design — independent transcription context, no benefit from KV cache reuse.
+- Issue #14 (GlobalHotkeyManager thread safety): CGEventTap callback runs on main RunLoop via `CFRunLoopAddSource(CFRunLoopGetMain(), ...)`. Practically safe.
+
+### Impact
+- Files modified: 7 (AppDelegate.swift, AppState.swift, AudioCaptureManager.swift, TextProcessingPreset.swift, HotwordStore.swift, HistoryStore.swift, HomeView.swift, RecordingOverlayPanel.swift, README.md)
+- Files added: 0
+- Files deleted: 0
+- Properties added: 2 (lastSaveError in HistoryStore, lastSaveError in HotwordStore)
+- Properties added to View: 1 (cachedMicrophones in HomeView)
+- Language cases removed from systemPrompt: 7 (fr, de, es, pt, ru, ar, it)
+- Language cases removed from asrLanguageHint: 7 (fr, de, es, pt, ru, ar, it)
+
+
 ## [2026-04-19] Bug Fix Session — Previous Review Findings
 
 ### CGEventTap Memory Leak Fix
