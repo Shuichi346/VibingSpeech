@@ -1,5 +1,78 @@
 # Code Deletion Log
 
+## [2026-04-19] Bug Fix Session — Previous Review Findings
+
+### CGEventTap Memory Leak Fix
+- Sources/VibingSpeech/HotkeyManager/GlobalHotkeyManager.swift — CGEventTap callback return value changed from `Unmanaged.passRetained(event)` to `Unmanaged.passUnretained(event)` (eliminated per-event retain leak)
+
+### Hotwords ASR Integration
+- Sources/VibingSpeech/Persistence/HotwordStore.swift — Added `recognitionContext` computed property that formats hotword list into a context string for ASR prompt injection
+- Sources/VibingSpeech/App/AppState.swift — `stopRecordingAndTranscribe()` now passes `hotwords.recognitionContext` to `transcriptionEngine.transcribe(context:)`
+- Sources/VibingSpeech/Audio/TranscriptionEngine.swift — `transcribe()` signature updated to accept `context: String?` parameter, forwarded to `Qwen3ASRModel.transcribe(context:)`
+
+### Microphone Selection Fix
+- Sources/VibingSpeech/Audio/AudioCaptureManager.swift — Added `configureInputDevice(_:)` private method that calls `audioEngine.inputNode.auAudioUnit.setDeviceID()` with the selected device
+- Sources/VibingSpeech/Audio/AudioCaptureManager.swift — Added `defaultInputDeviceID()` static method using CoreAudio `kAudioHardwarePropertyDefaultInputDevice`
+- Sources/VibingSpeech/Audio/AudioCaptureManager.swift — `startRecording(microphoneID:)` now calls `configureInputDevice()` before installing the audio tap
+
+### Accessibility Permission Handling Overhaul
+- Sources/VibingSpeech/HotkeyManager/GlobalHotkeyManager.swift — `start(keyCode:)` changed from silent failure to `throws` (throws `GlobalHotkeyError`)
+- Sources/VibingSpeech/HotkeyManager/GlobalHotkeyManager.swift — Added `GlobalHotkeyError` enum (`accessibilityPermissionRequired`, `failedToCreateEventTap`)
+- Sources/VibingSpeech/HotkeyManager/GlobalHotkeyManager.swift — Added `isRunning` property and `lastErrorMessage` property
+- Sources/VibingSpeech/App/AppState.swift — Added `hotkeyErrorMessage` property, `isHotkeyReady` computed property, `isAccessibilityGranted` property
+- Sources/VibingSpeech/App/AppState.swift — Added `configureHotkeyMonitoring(promptIfNeeded:)` private method that handles permission check, start, and error reporting
+- Sources/VibingSpeech/App/AppState.swift — Added `retryHotkeySetup()` and `openAccessibilitySettings()` public methods
+- Sources/VibingSpeech/Utilities/PermissionChecker.swift — `requestAccessibilityIfNeeded()` changed to return `Bool` with `prompt` parameter; added `openAccessibilitySettings()` method
+- Sources/VibingSpeech/Views/MainWindow/HomeView.swift — Added hotkey status indicator (green dot when active, orange warning with "Open Accessibility Settings" and "Retry Hotkey Setup" buttons when inactive)
+
+### Transcription Off-MainActor Migration
+- Sources/VibingSpeech/Audio/TranscriptionEngine.swift — Introduced `TranscriptionModelStore` private actor to hold `Qwen3ASRModel` and run `transcribe()` off the MainActor
+- Sources/VibingSpeech/Audio/TranscriptionEngine.swift — `transcribe()` changed from synchronous to `async`, delegating to `modelStore.transcribe()`
+- Sources/VibingSpeech/App/AppState.swift — `stopRecordingAndTranscribe()` updated to `await` the async transcription call inside a `Task(priority: .userInitiated)`
+
+### Initial Window Display Before Model Load
+- Sources/VibingSpeech/App/AppDelegate.swift — `applicationDidFinishLaunching` reordered: `showWindow()` is now called before `await appState.setup()` so model download progress is visible immediately
+
+### ASR Model Switch UI Safety
+- Sources/VibingSpeech/App/AppState.swift — Added `pendingModelVariant` property to track in-progress model switch
+- Sources/VibingSpeech/App/AppState.swift — Added `selectedModelForUI` computed property that returns `pendingModelVariant ?? currentVariant ?? settings.selectedModel`
+- Sources/VibingSpeech/App/AppState.swift — `switchModel()` now sets `pendingModelVariant` during load and only updates `settings.selectedModel` on success
+- Sources/VibingSpeech/Views/MainWindow/HomeView.swift — ASR Model Picker bound to `appState.selectedModelForUI` with `.disabled` during loading or recording
+
+### Recording Hotkey Setting Applied at Startup
+- Sources/VibingSpeech/App/AppState.swift — `configureHotkeyMonitoring()` now passes `settings.recordingHotkey.keyCode` to `hotkeyManager.start()` instead of hardcoded `KeyCode.rightOption`
+- Sources/VibingSpeech/App/AppState.swift — Added `updateRecordingHotkey(_:)` method that updates both the setting and the live hotkey manager
+- Sources/VibingSpeech/Persistence/SettingsStore.swift — Added `keyCode` and `symbol` computed properties to `RecordingHotkey` enum
+
+### Language Hint Passed to ASR
+- Sources/VibingSpeech/App/AppState.swift — Added `asrLanguageHint(from:)` private method that maps language codes to ASR language hint strings
+- Sources/VibingSpeech/Audio/TranscriptionEngine.swift — `transcribe()` signature updated to accept `languageHint: String?`, forwarded to `Qwen3ASRModel.transcribe(language:)`
+
+### History Pruning at Startup
+- Sources/VibingSpeech/App/AppState.swift — `init()` now calls `history.pruneIfNeeded(retention: settings.historyRetention)` immediately after creating stores
+
+### Clipboard Restoration Safety
+- Sources/VibingSpeech/TextInsertion/TextInsertionService.swift — Added `snapshotPasteboard(_:)` private method that captures all pasteboard items and their typed data before overwriting
+- Sources/VibingSpeech/TextInsertion/TextInsertionService.swift — Added `restorePasteboard(_:on:onlyIfChangeCountMatches:)` private method that only restores if `changeCount` has not changed (another app hasn't written to clipboard in the interim)
+- Sources/VibingSpeech/TextInsertion/TextInsertionService.swift — All early-return paths (CGEvent creation failure) now call `restorePasteboard()` before returning
+
+### Event Tap Recovery
+- Sources/VibingSpeech/HotkeyManager/GlobalHotkeyManager.swift — `handleEvent()` now checks for `tapDisabledByTimeout` and `tapDisabledByUserInput` event types
+- Sources/VibingSpeech/HotkeyManager/GlobalHotkeyManager.swift — Added `recoverEventTap()` private method that re-enables the tap and resets `isHotkeyHeld` state
+
+### Error Display in UI
+- Sources/VibingSpeech/Views/MainWindow/MainContentView.swift — Added `.safeAreaInset(edge: .bottom)` error banner that shows `appState.lastError` with a "Dismiss" button
+- Sources/VibingSpeech/App/AppState.swift — Added `clearLastError()` method
+
+### Impact
+- Files modified: 10 (AppDelegate.swift, AppState.swift, AudioCaptureManager.swift, TranscriptionEngine.swift, GlobalHotkeyManager.swift, PermissionChecker.swift, TextInsertionService.swift, SettingsStore.swift, HomeView.swift, MainContentView.swift, HotwordStore.swift)
+- Files added: 0
+- Files deleted: 0
+- Methods added: 14 (configureInputDevice, defaultInputDeviceID, configureHotkeyMonitoring, retryHotkeySetup, openAccessibilitySettings, updateRecordingHotkey, asrLanguageHint, clearLastError, snapshotPasteboard, restorePasteboard, recoverEventTap, recognitionContext, selectedModelForUI, isHotkeyReady)
+- Properties added: 5 (hotkeyErrorMessage, isAccessibilityGranted, pendingModelVariant, isRunning, lastErrorMessage)
+- Enums added: 1 (GlobalHotkeyError)
+
+
 ## [2026-04-18] mlx-swift-lm v3 Upgrade & Qwen3.5-4B Migration
 
 ### mlx-swift-lm 2.31.3 → 3.31.3 Upgrade
