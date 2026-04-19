@@ -11,6 +11,7 @@ import Observation
 
 @Observable final class HotwordStore {
     private(set) var hotwords: [Hotword] = []
+    private(set) var lastSaveError: String?
 
     private let fileURL: URL
 
@@ -51,16 +52,21 @@ import Observation
         hotwords.map { $0.text }
     }
 
+    /// Context string for Qwen3-ASR decoder prompt prefix.
+    /// Uses a concise word-list format rather than natural language instructions,
+    /// since the context parameter is prepended to the decoder prompt.
     var recognitionContext: String? {
         guard !hotwordTexts.isEmpty else { return nil }
-        return "Recognize these terms accurately when they are spoken: \(hotwordTexts.joined(separator: ", "))"
+        return "Key terms: \(hotwordTexts.joined(separator: ", "))"
     }
 
     private func save() {
         do {
             let data = try JSONEncoder().encode(hotwords)
             try data.write(to: fileURL)
+            lastSaveError = nil
         } catch {
+            lastSaveError = "Failed to save hotwords: \(error.localizedDescription)"
             print("Failed to save hotwords: \(error)")
         }
     }

@@ -39,7 +39,6 @@ import Observation
         let inputNode = audioEngine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
-        // 16kHz モノラル Float32 に変換する
         guard
             let outputFormat = AVAudioFormat(
                 commonFormat: .pcmFormatFloat32,
@@ -57,7 +56,6 @@ import Observation
 
         let targetSampleRate = self.targetSampleRate
 
-        // エンジン側の実入力フォーマットを使う
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] buffer, _ in
             guard let self = self else { return }
             guard let converter = self.converter else { return }
@@ -65,6 +63,7 @@ import Observation
             let capacity = AVAudioFrameCount(
                 Double(buffer.frameLength) * targetSampleRate / inputFormat.sampleRate
             )
+            guard capacity > 0 else { return }
             guard
                 let convertedBuffer = AVAudioPCMBuffer(
                     pcmFormat: outputFormat,
@@ -73,10 +72,15 @@ import Observation
             else { return }
 
             var error: NSError?
-            let inputBuffer = buffer
+            var inputConsumed = false
             converter.convert(to: convertedBuffer, error: &error) { _, status in
+                if inputConsumed {
+                    status.pointee = .noDataNow
+                    return nil
+                }
+                inputConsumed = true
                 status.pointee = .haveData
-                return inputBuffer
+                return buffer
             }
 
             if let error = error {
@@ -84,19 +88,19 @@ import Observation
                 return
             }
 
-            // Float 配列へ変換する
             guard let channelData = convertedBuffer.floatChannelData else { return }
+            let frameCount = Int(convertedBuffer.frameLength)
+            guard frameCount > 0 else { return }
             let samples = Array(
                 UnsafeBufferPointer(
                     start: channelData[0],
-                    count: Int(convertedBuffer.frameLength)
+                    count: frameCount
                 ))
 
             self.lock.lock()
             self.audioBuffer.append(contentsOf: samples)
             self.lock.unlock()
 
-            // 録音レベル表示用の RMS を計算する
             let rms = sqrt(samples.reduce(0) { $0 + $1 * $1 } / Float(max(samples.count, 1)))
             let normalizedLevel = min(max(rms * 5.0, 0.0), 1.0)
 
@@ -203,7 +207,9 @@ import Observation
             throw NSError(
                 domain: "AudioCaptureManager",
                 code: -4,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to resolve the system default microphone."]
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to resolve the system default microphone."
+                ]
             )
         }
 
@@ -245,7 +251,6 @@ import Observation
         var microphones: [(id: String, name: String)] = []
 
         for deviceID in deviceIDs {
-            // 入力チャンネルを持つデバイスだけを対象にする
             var streamAddress = AudioObjectPropertyAddress(
                 mSelector: kAudioDevicePropertyStreams,
                 mScope: kAudioObjectPropertyScopeInput,
@@ -263,7 +268,6 @@ import Observation
 
             guard status == noErr, streamSize > 0 else { continue }
 
-            // デバイス名を取得する
             var nameAddress = AudioObjectPropertyAddress(
                 mSelector: kAudioObjectPropertyName,
                 mScope: kAudioObjectPropertyScopeGlobal,

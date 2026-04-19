@@ -19,7 +19,7 @@ final class OverlayState: ObservableObject {
 
     let barCount: Int
     private let minBarHeight: CGFloat = 3.0
-    private let maxBarHeight: CGFloat = 28.0  // capsule内部高さギリギリまで
+    private let maxBarHeight: CGFloat = 28.0
 
     private var _animationTimer: Timer?
     private var audioLevelProvider: (() -> Float)?
@@ -55,18 +55,14 @@ final class OverlayState: ObservableObject {
     private func updateBars() {
         let rawLevel = CGFloat(audioLevelProvider?() ?? 0)
 
-        // Fast attack, slow decay
         if rawLevel > smoothedLevel {
             smoothedLevel = smoothedLevel * 0.1 + rawLevel * 0.9
         } else {
             smoothedLevel = smoothedLevel * 0.75 + rawLevel * 0.25
         }
 
-        // 超アグレッシブな増幅: 0~0.15 → 0~1.0 にマッピング
-        // 通常の発話(0.05~0.15)で天井に届く
         let amplified = min(pow(smoothedLevel * 8.0, 0.8), 1.0)
 
-        // 無音でも微小な動きを保証
         let level = max(amplified, 0.1)
 
         let center = CGFloat(barCount - 1) / 2.0
@@ -75,10 +71,8 @@ final class OverlayState: ObservableObject {
         for i in 0..<barCount {
             let distanceFromCenter = abs(CGFloat(i) - center) / center
 
-            // 中央が最も高く、端に向かって急激に下がるエンベロープ
             let envelope = 1.0 - pow(distanceFromCenter, 1.3) * 0.65
 
-            // バーごとのランダム揺らぎ
             let randomFactor = CGFloat.random(in: 0.55...1.0)
 
             let target =
@@ -93,7 +87,15 @@ final class OverlayState: ObservableObject {
     }
 
     deinit {
-        _animationTimer?.invalidate()
+        // Timer.invalidate() must be called on the thread that created it.
+        // OverlayState is @MainActor and the timer is created on the main thread,
+        // but deinit is nonisolated. Ensure cleanup via MainActor dispatch.
+        let timer = _animationTimer
+        if timer != nil {
+            DispatchQueue.main.async {
+                timer?.invalidate()
+            }
+        }
     }
 }
 
