@@ -101,14 +101,12 @@ import Observation
             if !textProcessingEngine.isModelLoaded {
                 do {
                     try await textProcessingEngine.loadModel()
-                    // 完了時にすでに別のトグル操作が行われていた場合は結果を破棄
                     if textProcessingToggleGeneration != currentGeneration {
                         if !settings.textProcessingEnabled {
                             textProcessingEngine.unloadModel()
                         }
                     }
                 } catch {
-                    // 完了時点でまだ同じ操作世代なら設定をリセット
                     if textProcessingToggleGeneration == currentGeneration {
                         lastError =
                             "Failed to load text processing model: \(error.localizedDescription)"
@@ -271,6 +269,7 @@ import Observation
                             rawText,
                             preset: textProcessingPreset,
                             detectedLanguage: detectedLanguage,
+                            asrLanguage: asrDetectedLanguage,
                             customPrompt: customPrompt
                         )
                         originalText = rawText
@@ -302,9 +301,7 @@ import Observation
         }
     }
 
-    /// ASR検出言語を正規化して返す。
-    /// ASRモデルは "english", "japanese", "chinese" のような文字列を返すため、
-    /// コード ("en", "ja", "zh") に変換する。
+    /// ASR検出言語を正規化して言語コードに変換する
     private func normalizeASRLanguage(_ asrLanguage: String?) -> String? {
         guard let lang = asrLanguage?.lowercased() else { return nil }
         switch lang {
@@ -326,7 +323,6 @@ import Observation
         case "vietnamese": return "vi"
         case "indonesian": return "id"
         default:
-            // 2文字コードがそのまま返されるケースにも対応
             if lang.count == 2 { return lang }
             return nil
         }
@@ -339,12 +335,10 @@ import Observation
         configured: String,
         asrDetectedLanguage: String?
     ) -> String {
-        // ユーザーが明示的に言語を指定している場合はそれを使う
         if configured != "auto" {
             return configured
         }
 
-        // ASRモデルが検出した言語を優先使用
         if let normalized = normalizeASRLanguage(asrDetectedLanguage) {
             return normalized
         }
@@ -368,16 +362,12 @@ import Observation
             }
         }
 
-        // ひらがな/カタカナがあれば日本語確定
         if japaneseCount > 0 {
             return "ja"
         }
-        // 漢字のみで日本語かなが無い場合は判定困難 → unknownにしてLLMに任せる
         if chineseCount > 3 && latinCount < chineseCount {
             return "zh"
         }
-        // ラテン文字のみの場合は特定言語に確定させない
-        // LLMのdefaultケースで自動検出指示を使う
         return "unknown"
     }
 

@@ -33,7 +33,6 @@ import Tokenizers
 
         do {
             let configuration = ModelConfiguration(id: Self.modelId)
-            // mlx-swift-lm v3: use MLXHuggingFace macros for downloader and tokenizer
             modelContainer = try await LLMModelFactory.shared.loadContainer(
                 from: #hubDownloader(),
                 using: #huggingFaceTokenizerLoader(),
@@ -58,21 +57,20 @@ import Tokenizers
         loadingProgress = ""
     }
 
-    /// Process text using the LLM with the given preset and detected language.
-    /// Uses Qwen3.5-4B with thinking disabled (enable_thinking=false).
-    /// Non-thinking optimal parameters:
-    ///   temperature=0.7, topP=0.8, topK=20, minP=0.0,
-    ///   presencePenalty=1.5, repetitionPenalty=1.0 (disabled)
+    /// LLMでテキストを後処理する。
     /// - Parameters:
-    ///   - text: The transcribed text to process
-    ///   - preset: The processing preset to use
-    ///   - detectedLanguage: Language code detected from transcription (e.g. "ja", "en", "zh")
-    ///   - customPrompt: Custom system prompt (used only when preset is .custom)
-    /// - Returns: The processed text
+    ///   - text: 文字起こし結果のテキスト
+    ///   - preset: 処理プリセット
+    ///   - detectedLanguage: 正規化済み言語コード ("ja", "en", "zh", "fr", "unknown" 等)
+    ///   - asrLanguage: ASRモデルが返した生の言語名 ("japanese", "french" 等)。
+    ///                  ja/zh/en 以外の言語指示を生成する際に使用。
+    ///   - customPrompt: カスタムプリセット用のユーザー定義プロンプト
+    /// - Returns: 後処理済みテキスト
     func processText(
         _ text: String,
         preset: TextProcessingPreset,
         detectedLanguage: String,
+        asrLanguage: String? = nil,
         customPrompt: String = ""
     ) async throws -> String {
         guard let container = modelContainer else {
@@ -86,12 +84,12 @@ import Tokenizers
             }
             systemPrompt = customPrompt
         } else {
-            systemPrompt = preset.systemPrompt(detectedLanguage: detectedLanguage)
+            systemPrompt = preset.systemPrompt(
+                detectedLanguage: detectedLanguage,
+                asrLanguage: asrLanguage
+            )
         }
 
-        // Qwen3.5-4B non-thinking optimal parameters:
-        // Temperature=0.7, TopP=0.8, TopK=20, MinP=0.0
-        // presence_penalty=1.5, repetition_penalty=1.0 (no repetition penalty)
         let generateParameters = GenerateParameters(
             maxTokens: 2048,
             temperature: 0.7,
@@ -102,9 +100,6 @@ import Tokenizers
             presenceContextSize: 64
         )
 
-        // Disable thinking mode via additionalContext
-        // The Qwen3.5 chat template checks: enable_thinking is defined and enable_thinking is false
-        // When false, it outputs <think>\n\n</think>\n\n which effectively skips reasoning
         let session = ChatSession(
             container,
             instructions: systemPrompt,
@@ -114,28 +109,22 @@ import Tokenizers
 
         let result = try await session.respond(to: text)
 
-        // Clean up the result: remove any leading/trailing whitespace
-        // Also strip any residual <think>...</think> tags that might appear
         let cleaned = stripThinkTags(result.trimmingCharacters(in: .whitespacesAndNewlines))
         return cleaned.isEmpty ? text : cleaned
     }
 
-    /// Remove <think>...</think> tags from the output, in case the model
-    /// still produces them despite enable_thinking=false.
+    /// <think>...</think> タグを除去する
     private func stripThinkTags(_ text: String) -> String {
-        // Pattern: <think> ... </think> followed by optional whitespace
         var result = text
         while let thinkStart = result.range(of: "<think>") {
             if let thinkEnd = result.range(
                 of: "</think>", range: thinkStart.upperBound..<result.endIndex)
             {
-                // Remove everything from <think> to </think> inclusive, plus trailing whitespace
                 let endIdx = thinkEnd.upperBound
                 let afterEnd = result[endIdx...].drop(while: { $0.isWhitespace || $0.isNewline })
                 result =
                     String(result[result.startIndex..<thinkStart.lowerBound]) + String(afterEnd)
             } else {
-                // Unclosed <think> tag — remove from <think> to end
                 result = String(result[result.startIndex..<thinkStart.lowerBound])
                 break
             }

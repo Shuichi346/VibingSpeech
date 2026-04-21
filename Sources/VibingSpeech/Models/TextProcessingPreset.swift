@@ -26,7 +26,12 @@ enum TextProcessingPreset: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    func systemPrompt(detectedLanguage: String) -> String {
+    /// LLMへのシステムプロンプトを生成する。
+    /// - Parameters:
+    ///   - detectedLanguage: 正規化済み言語コード ("ja", "en", "zh", "unknown" 等)
+    ///   - asrLanguage: ASRモデルが返した生の言語名 ("japanese", "french", "korean" 等)。
+    ///                  ja/zh/en 以外の言語で英語テンプレートに代入して使う。
+    func systemPrompt(detectedLanguage: String, asrLanguage: String? = nil) -> String {
         let langInstruction: String
         switch detectedLanguage.lowercased().prefix(2) {
         case "ja":
@@ -36,8 +41,14 @@ enum TextProcessingPreset: String, CaseIterable, Codable, Identifiable {
         case "en":
             langInstruction = "The input text is in English. Respond in English."
         default:
-            langInstruction =
-                "Detect the language of the input text and always respond in that same language."
+            if let lang = asrLanguage, !lang.isEmpty {
+                let capitalized = lang.prefix(1).uppercased() + lang.dropFirst().lowercased()
+                langInstruction =
+                    "The input text is in \(capitalized). Respond in \(capitalized)."
+            } else {
+                langInstruction =
+                    "Detect the language of the input text and always respond in that same language."
+            }
         }
 
         switch self {

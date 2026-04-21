@@ -1,5 +1,65 @@
 # Code Deletion Log
 
+## [2026-04-21] Bug Fix Session — Multi-Language Detection & Safety Improvements
+
+### Critical: Latin-script languages all detected as English
+- Sources/VibingSpeech/Audio/TranscriptionEngine.swift — `transcribe()` return type changed from `String` to `(text: String, detectedLanguage: String?)` tuple
+- Sources/VibingSpeech/Audio/TranscriptionEngine.swift — `TranscriptionModelStore.transcribe()` now calls `model.transcribeWithLanguage()` instead of `model.transcribe()` to obtain ASR-detected language from `TranscriptionResult.language`
+- Sources/VibingSpeech/App/AppState.swift — `detectLanguage(from:configured:)` renamed to `detectLanguage(from:configured:asrDetectedLanguage:)` with three-tier priority: user setting > ASR detection > Unicode heuristic
+- Sources/VibingSpeech/App/AppState.swift — Added `normalizeASRLanguage(_:)` private method that maps ASR language names ("french", "japanese", etc.) to ISO 639-1 codes ("fr", "ja", etc.)
+- Sources/VibingSpeech/App/AppState.swift — Latin-only text heuristic now returns `"unknown"` instead of `"en"`, delegating to LLM auto-detection
+- Sources/VibingSpeech/Models/TextProcessingPreset.swift — `systemPrompt(detectedLanguage:)` signature changed to `systemPrompt(detectedLanguage:asrLanguage:)` with new `asrLanguage: String?` parameter
+- Sources/VibingSpeech/Models/TextProcessingPreset.swift — `default` case now uses ASR language name in English template (`"The input text is in {Language}. Respond in {Language}."`) when available, falling back to generic auto-detect instruction only when ASR language is nil
+- Sources/VibingSpeech/Models/TextProcessingPreset.swift — Removed `"ko"` case (Korean now handled by `default` case via ASR language template)
+- Sources/VibingSpeech/TextProcessing/TextProcessingEngine.swift — `processText(_:preset:detectedLanguage:customPrompt:)` signature changed to `processText(_:preset:detectedLanguage:asrLanguage:customPrompt:)` to pass raw ASR language name through to preset
+- Sources/VibingSpeech/App/AppState.swift — `stopRecordingAndTranscribe()` now captures `asrDetectedLanguage` from transcription result and passes it through to `processText(asrLanguage:)`
+
+### Critical: History saved to disk even when retention is set to Never
+- Sources/VibingSpeech/App/AppState.swift — `stopRecordingAndTranscribe()` now checks `historyRetention != .never` before calling `history.add(record)`; when retention is `.never`, no `TranscriptionRecord` is created and no data is written to disk
+
+### High: Kanji-only Japanese text detected as Chinese
+- Sources/VibingSpeech/App/AppState.swift — Resolved by prioritizing ASR-detected language over Unicode heuristic; Qwen3-ASR's 52-language identification correctly distinguishes Japanese from Chinese regardless of script
+- Sources/VibingSpeech/App/AppState.swift — Removed Korean (Hangul) detection from Unicode heuristic fallback; kanji-only text without ASR detection falls through to `"zh"` or `"unknown"`
+
+### High: Right Option / Left Control release detection fails with both modifier keys held
+- Sources/VibingSpeech/HotkeyManager/GlobalHotkeyManager.swift — Removed `flags.contains(.maskAlternate)` / `flags.contains(.maskControl)` device-independent flag checks from `handleEvent()`
+- Sources/VibingSpeech/HotkeyManager/GlobalHotkeyManager.swift — `flagsChanged` handling now uses keyCode-based toggle: when `keyCode == hotkeyCode`, the `isHotkeyHeld` state is toggled (false→true on first event, true→false on second event), correctly distinguishing left/right modifier keys without relying on aggregate flag masks
+
+### High: Recording starts even when ASR model is not loaded
+- Sources/VibingSpeech/App/AppState.swift — `startRecording()` now checks `transcriptionEngine.isModelLoaded` before proceeding; if model is not loaded, sets `lastError` message and returns without starting recording
+
+### High: Non-atomic JSON writes risk file corruption
+- Sources/VibingSpeech/Persistence/HistoryStore.swift — `save()` changed from `data.write(to: fileURL)` to `data.write(to: fileURL, options: .atomic)`
+- Sources/VibingSpeech/Persistence/HotwordStore.swift — `save()` changed from `data.write(to: fileURL)` to `data.write(to: fileURL, options: .atomic)`
+- Sources/VibingSpeech/Persistence/HistoryStore.swift — `load()` no longer implicitly overwrites corrupted files; on decode failure, sets `records = []` in memory but preserves the existing file on disk
+- Sources/VibingSpeech/Persistence/HotwordStore.swift — `load()` no longer implicitly overwrites corrupted files; on decode failure, sets `hotwords = []` in memory but preserves the existing file on disk
+- Sources/VibingSpeech/Persistence/HistoryStore.swift — `load()` now checks `FileManager.default.fileExists(atPath:)` before attempting to read, avoiding unnecessary error path for first launch
+- Sources/VibingSpeech/Persistence/HotwordStore.swift — `load()` now checks `FileManager.default.fileExists(atPath:)` before attempting to read, avoiding unnecessary error path for first launch
+
+### Medium: Text Processing toggle ON/OFF race leaves model in memory
+- Sources/VibingSpeech/App/AppState.swift — Added `textProcessingToggleGeneration: UInt64` counter to serialize toggle operations
+- Sources/VibingSpeech/App/AppState.swift — `setTextProcessingEnabled(_:)` now captures generation counter before async work; on completion, checks if generation matches and discards stale results (unloads model if setting was toggled back to OFF during load)
+
+### Medium: UI shows Text Processing ON after model load failure at startup
+- Sources/VibingSpeech/App/AppState.swift — `setup()` now sets `settings.textProcessingEnabled = false` when `textProcessingEngine.loadModel()` fails during initial setup
+
+### Medium: Korean (`ko`) removed from backend to match UI
+- Sources/VibingSpeech/App/AppState.swift — Removed `"ko"` → `"Korean"` case from `asrLanguageHint(from:)`
+- Sources/VibingSpeech/App/AppState.swift — Removed Hangul range detection from `detectLanguage()` Unicode heuristic
+- Sources/VibingSpeech/Models/TextProcessingPreset.swift — Removed `"ko"` case from `systemPrompt()` switch; Korean is now handled by `default` case using ASR language name template
+
+### Impact
+- Files modified: 6 (AppState.swift, TranscriptionEngine.swift, TextProcessingPreset.swift, TextProcessingEngine.swift, HistoryStore.swift, HotwordStore.swift)
+- Files added: 0
+- Files deleted: 0
+- Methods added: 1 (normalizeASRLanguage in AppState)
+- Methods signature changed: 4 (TranscriptionEngine.transcribe, TextProcessingPreset.systemPrompt, TextProcessingEngine.processText, AppState.detectLanguage)
+- Properties added: 1 (textProcessingToggleGeneration in AppState)
+- Language cases removed from systemPrompt: 1 (ko)
+- Language cases removed from asrLanguageHint: 1 (ko)
+- Language cases removed from detectLanguage heuristic: 1 (Korean/Hangul)
+
+
 ## [2026-04-19] Bug Fix Session — Remaining Issues Resolution
 
 ### Critical: detectLanguage() returns "unknown" for English/Latin text
