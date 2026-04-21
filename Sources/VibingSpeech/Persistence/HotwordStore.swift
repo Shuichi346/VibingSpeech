@@ -47,9 +47,7 @@ import Observation
         hotwords.map { $0.text }
     }
 
-    /// Context string for Qwen3-ASR decoder prompt prefix.
-    /// Uses a concise word-list format rather than natural language instructions,
-    /// since the context parameter is prepended to the decoder prompt.
+    /// Qwen3-ASRデコーダープロンプトプレフィックス用のコンテキスト文字列
     var recognitionContext: String? {
         guard !hotwordTexts.isEmpty else { return nil }
         return "Key terms: \(hotwordTexts.joined(separator: ", "))"
@@ -58,7 +56,7 @@ import Observation
     private func save() {
         do {
             let data = try JSONEncoder().encode(hotwords)
-            try data.write(to: fileURL)
+            try data.write(to: fileURL, options: .atomic)
             lastSaveError = nil
         } catch {
             lastSaveError = "Failed to save hotwords: \(error.localizedDescription)"
@@ -67,10 +65,18 @@ import Observation
     }
 
     private func load() {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            hotwords = []
+            return
+        }
+
         do {
             let data = try Data(contentsOf: fileURL)
             hotwords = try JSONDecoder().decode([Hotword].self, from: data)
         } catch {
+            // デコード失敗時はメモリ上では空配列にするが、
+            // 破損ファイルを空配列で上書きしない（データ復旧の余地を残す）
+            print("Failed to load hotwords (file preserved): \(error)")
             hotwords = []
         }
     }

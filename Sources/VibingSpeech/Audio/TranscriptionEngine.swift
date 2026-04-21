@@ -5,6 +5,7 @@ import Foundation
 import Observation
 import Qwen3ASR
 
+/// ASRモデルの保持と推論をMainActorから分離するアクター
 private actor TranscriptionModelStore {
     private var model: Qwen3ASRModel?
 
@@ -13,22 +14,23 @@ private actor TranscriptionModelStore {
         model = loadedModel
     }
 
+    /// 音声を文字起こしし、テキストとASRが検出した言語を返す
     func transcribe(
         audio: [Float],
         sampleRate: Int,
         languageHint: String?,
         context: String?
-    ) -> String {
+    ) -> (text: String, detectedLanguage: String?) {
         guard let model else {
-            return ""
+            return (text: "", detectedLanguage: nil)
         }
 
-        return model.transcribe(
+        let result = model.transcribeWithLanguage(
             audio: audio,
             sampleRate: sampleRate,
-            language: languageHint,
-            context: context
+            language: languageHint
         )
+        return (text: result.text, detectedLanguage: result.language)
     }
 }
 
@@ -68,18 +70,22 @@ private actor TranscriptionModelStore {
         }
     }
 
+    /// 音声を文字起こしし、テキストとASR検出言語を返す
     func transcribe(
         audio: [Float],
         sampleRate: Int = 16000,
         languageHint: String? = nil,
         context: String? = nil
-    ) async -> String {
+    ) async -> (text: String, detectedLanguage: String?) {
         let result = await modelStore.transcribe(
             audio: audio,
             sampleRate: sampleRate,
             languageHint: languageHint,
             context: context
         )
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (
+            text: result.text.trimmingCharacters(in: .whitespacesAndNewlines),
+            detectedLanguage: result.detectedLanguage
+        )
     }
 }

@@ -30,6 +30,9 @@ import Observation
     private var isToggleMode = false
     private let longPressThreshold: TimeInterval = 0.3
 
+    /// Text Processingトグル操作の競合を防ぐためのカウンター
+    private var textProcessingToggleGeneration: UInt64 = 0
+
     var onRecordingStateChanged: ((RecordingState) -> Void)?
 
     var selectedModelForUI: ASRModelVariant {
@@ -63,6 +66,7 @@ import Observation
                 try await textProcessingEngine.loadModel()
             } catch {
                 lastError = "Failed to load text processing model: \(error.localizedDescription)"
+                settings.textProcessingEnabled = false
             }
         }
     }
@@ -90,14 +94,26 @@ import Observation
 
     func setTextProcessingEnabled(_ enabled: Bool) async {
         settings.textProcessingEnabled = enabled
+        textProcessingToggleGeneration &+= 1
+        let currentGeneration = textProcessingToggleGeneration
+
         if enabled {
             if !textProcessingEngine.isModelLoaded {
                 do {
                     try await textProcessingEngine.loadModel()
+                    // 完了時にすでに別のトグル操作が行われていた場合は結果を破棄
+                    if textProcessingToggleGeneration != currentGeneration {
+                        if !settings.textProcessingEnabled {
+                            textProcessingEngine.unloadModel()
+                        }
+                    }
                 } catch {
-                    lastError =
-                        "Failed to load text processing model: \(error.localizedDescription)"
-                    settings.textProcessingEnabled = false
+                    // 完了時点でまだ同じ操作世代なら設定をリセット
+                    if textProcessingToggleGeneration == currentGeneration {
+                        lastError =
+                            "Failed to load text processing model: \(error.localizedDescription)"
+                        settings.textProcessingEnabled = false
+                    }
                 }
             }
         } else {
@@ -191,6 +207,11 @@ import Observation
     }
 
     private func startRecording() {
+        guard transcriptionEngine.isModelLoaded else {
+            lastError = "ASR model is still loading. Please wait until the model is ready."
+            return
+        }
+
         do {
             try audioCapture.startRecording(microphoneID: settings.selectedMicrophoneID)
             recordingState = .recording
@@ -217,6 +238,7 @@ import Observation
         let configuredLanguage = settings.language
         let asrLanguageHint = asrLanguageHint(from: configuredLanguage)
         let hotwordContext = hotwords.recognitionContext
+        let historyRetention = settings.historyRetention
 
         hotkeyPressedAt = nil
         isToggleMode = false
@@ -224,16 +246,20 @@ import Observation
         Task(priority: .userInitiated) { [weak self] in
             guard let self else { return }
 
-            let rawText = await self.transcriptionEngine.transcribe(
+            let transcriptionResult = await self.transcriptionEngine.transcribe(
                 audio: audioSamples,
                 languageHint: asrLanguageHint,
                 context: hotwordContext
             )
 
+            let rawText = transcriptionResult.text
+            let asrDetectedLanguage = transcriptionResult.detectedLanguage
+
             if !rawText.isEmpty {
                 let detectedLanguage = self.detectLanguage(
                     from: rawText,
-                    configured: configuredLanguage
+                    configured: configuredLanguage,
+                    asrDetectedLanguage: asrDetectedLanguage
                 )
 
                 var finalText = rawText
@@ -258,14 +284,17 @@ import Observation
 
                 TextInsertionService.insertText(finalText)
 
-                let record = TranscriptionRecord(
-                    text: finalText,
-                    originalText: originalText,
-                    durationSeconds: audioDuration,
-                    modelVariant: currentVariant
-                )
-                self.history.add(record)
-                self.history.pruneIfNeeded(retention: self.settings.historyRetention)
+                // 履歴保存設定が Never の場合は一切ディスクに書き込まない
+                if historyRetention != .never {
+                    let record = TranscriptionRecord(
+                        text: finalText,
+                        originalText: originalText,
+                        durationSeconds: audioDuration,
+                        modelVariant: currentVariant
+                    )
+                    self.history.add(record)
+                    self.history.pruneIfNeeded(retention: historyRetention)
+                }
             }
 
             self.recordingState = .idle
@@ -273,19 +302,60 @@ import Observation
         }
     }
 
-    private func detectLanguage(from text: String, configured: String) -> String {
+    /// ASR検出言語を正規化して返す。
+    /// ASRモデルは "english", "japanese", "chinese" のような文字列を返すため、
+    /// コード ("en", "ja", "zh") に変換する。
+    private func normalizeASRLanguage(_ asrLanguage: String?) -> String? {
+        guard let lang = asrLanguage?.lowercased() else { return nil }
+        switch lang {
+        case "japanese": return "ja"
+        case "english": return "en"
+        case "chinese", "mandarin": return "zh"
+        case "french": return "fr"
+        case "german": return "de"
+        case "spanish": return "es"
+        case "portuguese": return "pt"
+        case "italian": return "it"
+        case "russian": return "ru"
+        case "korean": return "ko"
+        case "arabic": return "ar"
+        case "dutch": return "nl"
+        case "turkish": return "tr"
+        case "polish": return "pl"
+        case "thai": return "th"
+        case "vietnamese": return "vi"
+        case "indonesian": return "id"
+        default:
+            // 2文字コードがそのまま返されるケースにも対応
+            if lang.count == 2 { return lang }
+            return nil
+        }
+    }
+
+    /// テキストとASR検出言語から最終的な言語を判定する。
+    /// 優先順位: ユーザー設定 > ASR検出言語 > Unicode文字種ヒューリスティック
+    private func detectLanguage(
+        from text: String,
+        configured: String,
+        asrDetectedLanguage: String?
+    ) -> String {
+        // ユーザーが明示的に言語を指定している場合はそれを使う
         if configured != "auto" {
             return configured
         }
 
+        // ASRモデルが検出した言語を優先使用
+        if let normalized = normalizeASRLanguage(asrDetectedLanguage) {
+            return normalized
+        }
+
+        // フォールバック: Unicode文字種によるヒューリスティック判定
         let hiraganaRange = Unicode.Scalar(0x3040)!...Unicode.Scalar(0x309F)!
         let katakanaRange = Unicode.Scalar(0x30A0)!...Unicode.Scalar(0x30FF)!
         let kanjiRange = Unicode.Scalar(0x4E00)!...Unicode.Scalar(0x9FFF)!
-        let hangulRange = Unicode.Scalar(0xAC00)!...Unicode.Scalar(0xD7AF)!
 
         var japaneseCount = 0
         var chineseCount = 0
-        var koreanCount = 0
         var latinCount = 0
 
         for scalar in text.unicodeScalars {
@@ -293,25 +363,21 @@ import Observation
                 japaneseCount += 1
             } else if kanjiRange.contains(scalar) {
                 chineseCount += 1
-            } else if hangulRange.contains(scalar) {
-                koreanCount += 1
             } else if scalar.properties.isAlphabetic && scalar.value < 0x0250 {
                 latinCount += 1
             }
         }
 
+        // ひらがな/カタカナがあれば日本語確定
         if japaneseCount > 0 {
             return "ja"
         }
-        if koreanCount > 0 {
-            return "ko"
-        }
+        // 漢字のみで日本語かなが無い場合は判定困難 → unknownにしてLLMに任せる
         if chineseCount > 3 && latinCount < chineseCount {
             return "zh"
         }
-        if latinCount > 0 {
-            return "en"
-        }
+        // ラテン文字のみの場合は特定言語に確定させない
+        // LLMのdefaultケースで自動検出指示を使う
         return "unknown"
     }
 
@@ -321,7 +387,6 @@ import Observation
         case "en": return "English"
         case "ja": return "Japanese"
         case "zh": return "Chinese"
-        case "ko": return "Korean"
         default: return nil
         }
     }

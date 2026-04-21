@@ -35,8 +35,6 @@ enum TextProcessingPreset: String, CaseIterable, Codable, Identifiable {
             langInstruction = "输入文本是中文。请用中文输出。"
         case "en":
             langInstruction = "The input text is in English. Respond in English."
-        case "ko":
-            langInstruction = "입력 텍스트는 한국어입니다. 한국어로 응답하세요."
         default:
             langInstruction =
                 "Detect the language of the input text and always respond in that same language."

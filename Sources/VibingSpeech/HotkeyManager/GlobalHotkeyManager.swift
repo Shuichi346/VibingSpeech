@@ -110,37 +110,29 @@ enum GlobalHotkeyError: LocalizedError, Sendable {
         }
 
         if type == .flagsChanged {
-            let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+            let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
 
-            if keyCode == hotkeyCode {
-                let flags = event.flags
-                let isOptionPressed = flags.contains(.maskAlternate)
-                let isControlPressed = flags.contains(.maskControl)
+            // flagsChangedイベントのkeyCodeは実際に変化したキーを示す。
+            // これにより左右の修飾キーを正確に区別できる。
+            // 例: 右Option = 61, 左Option = 58, 左Control = 59, 右Control = 62
+            guard keyCode == hotkeyCode else { return }
 
-                let isHotkeyActive: Bool
-                if hotkeyCode == KeyCode.rightOption.rawValue {
-                    isHotkeyActive = isOptionPressed
-                } else if hotkeyCode == KeyCode.leftControl.rawValue {
-                    isHotkeyActive = isControlPressed
-                } else {
-                    isHotkeyActive = false
+            // keyCodeが一致するflagsChangedイベントが来た = そのキーの状態が変わった。
+            // isHotkeyHeldのトグルで押下/離脱を判定する。
+            if !isHotkeyHeld {
+                isHotkeyHeld = true
+                DispatchQueue.main.async { [weak self] in
+                    self?.onHotkeyDown?()
                 }
-
-                if isHotkeyActive && !isHotkeyHeld {
-                    isHotkeyHeld = true
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onHotkeyDown?()
-                    }
-                } else if !isHotkeyActive && isHotkeyHeld {
-                    isHotkeyHeld = false
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onHotkeyUp?()
-                    }
+            } else {
+                isHotkeyHeld = false
+                DispatchQueue.main.async { [weak self] in
+                    self?.onHotkeyUp?()
                 }
             }
         } else if type == .keyDown {
             let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-            if keyCode == KeyCode.escape.rawValue {
+            if keyCode == Int64(KeyCode.escape.rawValue) {
                 DispatchQueue.main.async { [weak self] in
                     self?.onEscapePressed?()
                 }

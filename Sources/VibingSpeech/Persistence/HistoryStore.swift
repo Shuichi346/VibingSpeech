@@ -48,7 +48,7 @@ import Observation
 
         switch retention {
         case .forever:
-            break
+            return
         case .oneWeek:
             let oneWeekAgo = calendar.date(byAdding: .day, value: -7, to: now)!
             records = records.filter { $0.timestamp > oneWeekAgo }
@@ -77,7 +77,7 @@ import Observation
     private func save() {
         do {
             let data = try JSONEncoder().encode(records)
-            try data.write(to: fileURL)
+            try data.write(to: fileURL, options: .atomic)
             lastSaveError = nil
         } catch {
             lastSaveError = "Failed to save history: \(error.localizedDescription)"
@@ -86,10 +86,18 @@ import Observation
     }
 
     private func load() {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            records = []
+            return
+        }
+
         do {
             let data = try Data(contentsOf: fileURL)
             records = try JSONDecoder().decode([TranscriptionRecord].self, from: data)
         } catch {
+            // デコード失敗時はメモリ上では空配列にするが、
+            // 破損ファイルを空配列で上書きしない（データ復旧の余地を残す）
+            print("Failed to load history (file preserved): \(error)")
             records = []
         }
     }
