@@ -1,15 +1,11 @@
-//
 //  HomeView.swift
 //  VibingSpeech
-//
-//  Created by Shuichi on 2026/04/12.
-//  Copyright © 2026 Shuichi. All rights reserved.
-//
 
 import SwiftUI
 
 struct HomeView: View {
     @Bindable var appState: AppState
+    @State private var cachedMicrophones: [(id: String, name: String)] = []
 
     var body: some View {
         Form {
@@ -202,7 +198,8 @@ struct HomeView: View {
                         Text("\(variant.displayName) (\(variant.estimatedSize))").tag(variant)
                     }
                 }
-                .disabled(appState.recordingState != .idle || appState.transcriptionEngine.isLoading)
+                .disabled(
+                    appState.recordingState != .idle || appState.transcriptionEngine.isLoading)
 
                 Picker(
                     "Microphone",
@@ -212,13 +209,16 @@ struct HomeView: View {
                     )
                 ) {
                     Text("System Default").tag(nil as String?)
-                    ForEach(AudioCaptureManager.availableMicrophones(), id: \.id) { mic in
+                    ForEach(cachedMicrophones, id: \.id) { mic in
                         Text(mic.name).tag(mic.id as String?)
                     }
                 }
             }
         }
         .formStyle(.grouped)
+        .onAppear {
+            cachedMicrophones = AudioCaptureManager.availableMicrophones()
+        }
     }
 
     @ViewBuilder

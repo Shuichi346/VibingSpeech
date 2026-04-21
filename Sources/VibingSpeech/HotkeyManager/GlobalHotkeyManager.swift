@@ -1,10 +1,5 @@
-//
 //  GlobalHotkeyManager.swift
 //  VibingSpeech
-//
-//  Created by Shuichi on 2026/04/12.
-//  Copyright © 2026 Shuichi. All rights reserved.
-//
 
 import AppKit
 import CoreGraphics
@@ -46,7 +41,8 @@ enum GlobalHotkeyError: LocalizedError, Sendable {
 
         guard PermissionChecker.isAccessibilityGranted else {
             isRunning = false
-            lastErrorMessage = GlobalHotkeyError.accessibilityPermissionRequired.localizedDescription
+            lastErrorMessage =
+                GlobalHotkeyError.accessibilityPermissionRequired.localizedDescription
             throw GlobalHotkeyError.accessibilityPermissionRequired
         }
 

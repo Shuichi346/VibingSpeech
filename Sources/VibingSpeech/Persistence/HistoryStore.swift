@@ -1,16 +1,12 @@
-//
 //  HistoryStore.swift
 //  VibingSpeech
-//
-//  Created by Shuichi on 2026/04/12.
-//  Copyright © 2026 Shuichi. All rights reserved.
-//
 
 import Foundation
 import Observation
 
 @Observable final class HistoryStore {
     private(set) var records: [TranscriptionRecord] = []
+    private(set) var lastSaveError: String?
 
     private let fileURL: URL
 
@@ -82,7 +78,9 @@ import Observation
         do {
             let data = try JSONEncoder().encode(records)
             try data.write(to: fileURL)
+            lastSaveError = nil
         } catch {
+            lastSaveError = "Failed to save history: \(error.localizedDescription)"
             print("Failed to save history: \(error)")
         }
     }

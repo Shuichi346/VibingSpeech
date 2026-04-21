@@ -1,10 +1,5 @@
-//
 //  AppState.swift
 //  VibingSpeech
-//
-//  Created by Shuichi on 2026/04/12.
-//  Copyright © 2026 Shuichi. All rights reserved.
-//
 
 import Foundation
 import Observation
@@ -283,10 +278,8 @@ import Observation
             return configured
         }
 
-        let cjkRanges: [ClosedRange<Unicode.Scalar>] = [
-            Unicode.Scalar(0x3040)!...Unicode.Scalar(0x309F)!,
-            Unicode.Scalar(0x30A0)!...Unicode.Scalar(0x30FF)!,
-        ]
+        let hiraganaRange = Unicode.Scalar(0x3040)!...Unicode.Scalar(0x309F)!
+        let katakanaRange = Unicode.Scalar(0x30A0)!...Unicode.Scalar(0x30FF)!
         let kanjiRange = Unicode.Scalar(0x4E00)!...Unicode.Scalar(0x9FFF)!
         let hangulRange = Unicode.Scalar(0xAC00)!...Unicode.Scalar(0xD7AF)!
 
@@ -296,13 +289,13 @@ import Observation
         var latinCount = 0
 
         for scalar in text.unicodeScalars {
-            if cjkRanges.contains(where: { $0.contains(scalar) }) {
+            if hiraganaRange.contains(scalar) || katakanaRange.contains(scalar) {
                 japaneseCount += 1
             } else if kanjiRange.contains(scalar) {
                 chineseCount += 1
             } else if hangulRange.contains(scalar) {
                 koreanCount += 1
-            } else if scalar.isASCII && scalar.properties.isAlphabetic {
+            } else if scalar.properties.isAlphabetic && scalar.value < 0x0250 {
                 latinCount += 1
             }
         }
@@ -316,14 +309,19 @@ import Observation
         if chineseCount > 3 && latinCount < chineseCount {
             return "zh"
         }
+        if latinCount > 0 {
+            return "en"
+        }
         return "unknown"
     }
 
     private func asrLanguageHint(from configuredLanguage: String) -> String? {
         switch configuredLanguage {
+        case "auto": return nil
         case "en": return "English"
         case "ja": return "Japanese"
         case "zh": return "Chinese"
+        case "ko": return "Korean"
         default: return nil
         }
     }

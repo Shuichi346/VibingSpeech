@@ -1,18 +1,13 @@
-//
 //  TextProcessingEngine.swift
 //  VibingSpeech
-//
-//  Created by Shuichi on 2026/04/13.
-//  Copyright © 2026 Shuichi. All rights reserved.
-//
 
 import Foundation
+import HuggingFace
+import MLXHuggingFace
 import MLXLLM
 import MLXLMCommon
-import MLXHuggingFace
-import HuggingFace
-import Tokenizers
 import Observation
+import Tokenizers
 
 @Observable @MainActor final class TextProcessingEngine {
     private var modelContainer: ModelContainer?
@@ -64,12 +59,10 @@ import Observation
     }
 
     /// Process text using the LLM with the given preset and detected language.
-    ///
     /// Uses Qwen3.5-4B with thinking disabled (enable_thinking=false).
     /// Non-thinking optimal parameters:
     ///   temperature=0.7, topP=0.8, topK=20, minP=0.0,
     ///   presencePenalty=1.5, repetitionPenalty=1.0 (disabled)
-    ///
     /// - Parameters:
     ///   - text: The transcribed text to process
     ///   - preset: The processing preset to use
@@ -133,11 +126,14 @@ import Observation
         // Pattern: <think> ... </think> followed by optional whitespace
         var result = text
         while let thinkStart = result.range(of: "<think>") {
-            if let thinkEnd = result.range(of: "</think>", range: thinkStart.upperBound..<result.endIndex) {
+            if let thinkEnd = result.range(
+                of: "</think>", range: thinkStart.upperBound..<result.endIndex)
+            {
                 // Remove everything from <think> to </think> inclusive, plus trailing whitespace
                 let endIdx = thinkEnd.upperBound
                 let afterEnd = result[endIdx...].drop(while: { $0.isWhitespace || $0.isNewline })
-                result = String(result[result.startIndex..<thinkStart.lowerBound]) + String(afterEnd)
+                result =
+                    String(result[result.startIndex..<thinkStart.lowerBound]) + String(afterEnd)
             } else {
                 // Unclosed <think> tag — remove from <think> to end
                 result = String(result[result.startIndex..<thinkStart.lowerBound])
