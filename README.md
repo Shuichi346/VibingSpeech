@@ -226,7 +226,7 @@ You'll be prompted on first launch. To enable later: System Settings → Privacy
 
 ## Text Processing (LLM)
 
-When enabled, transcribed text is post-processed by an on-device LLM before pasting. **When disabled, the LLM is not loaded** — no extra memory, no extra latency.
+When enabled, transcribed text is post-processed by an on-device LLM before pasting. **When disabled, the LLM is not loaded** — no extra memory, no extra latency. Since this is a small LLM model, it sometimes mistakes what you say for a prompt.
 
 **Model:** [Qwen3.5-4B-MLX-4bit](https://huggingface.co/mlx-community/Qwen3.5-4B-MLX-4bit) (~2.9 GB download, ~3.5 GB memory)
 
