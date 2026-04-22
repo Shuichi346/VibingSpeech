@@ -1,5 +1,34 @@
 # Code Deletion Log
 
+## [2026-04-22] Bug Fix — Crash on rapid recording start button presses
+
+### Root Cause
+Rapidly pressing the recording start button caused the app to crash with `EXC_BREAKPOINT (SIGTRAP)` — an `Index out of range` error inside the `speech-swift` library's `WhisperFeatureExtractor.extractFeatures()` at `AudioPreprocessing.swift:180`. When recording was stopped almost immediately after starting, `stopRecording()` returned an empty or near-empty audio sample array. The library's reflect padding logic accessed `audio[max(0, audio.count - 2 - i)]`, which triggers an out-of-bounds access when `audio.count` is 0 or 1. This is a fatal runtime trap that cannot be caught with `do-catch`.
+
+A secondary issue was that `AudioCaptureManager` had no protection against concurrent `AVAudioEngine` operations, shared a single `AVAudioConverter` instance property across recording sessions, and reused the same `AVAudioEngine` without teardown isolation.
+
+### Fix 1: Minimum audio length guard before ASR (AppState.swift)
+- Added a guard in `stopRecordingAndTranscribe()` that checks `audioSamples.count >= AudioCaptureManager.minimumSamplesForASR` (800 samples / 50ms at 16kHz) before passing audio to the transcription engine
+- When the threshold is not met, the method plays the stop sound, resets state to idle, and returns without invoking ASR
+
+### Fix 2: Session-safe audio engine management (AudioCaptureManager.swift)
+- Removed shared `converter` instance property; `AVAudioConverter` is now created as a local variable inside `_startRecording` and captured by the tap closure, preventing stale callbacks from using a replaced converter
+- Added `sessionGeneration` counter (UInt64) incremented on every start/stop/cancel; tap callbacks check this value and return immediately if they belong to an outdated session
+- Added `engineQueue` (serial DispatchQueue) wrapping all public methods (`startRecording`, `stopRecording`, `cancelRecording`) to serialize `AVAudioEngine` operations and prevent concurrent access
+- `AVAudioEngine` is now created fresh for each recording session and destroyed on teardown via `_teardownEngine()`, eliminating lifecycle conflicts from engine reuse
+- Added `_teardownEngine()` helper that removes the tap, stops the engine, resets it, and nils the reference in a single atomic sequence
+- Added `static let minimumSamplesForASR = 800` constant used by both `AudioCaptureManager` and `AppState`
+
+### Impact
+- Files modified: 2 (`AudioCaptureManager.swift`, `AppState.swift`)
+- Files added: 0
+- Files deleted: 0
+- Properties removed: 1 (`converter` in AudioCaptureManager)
+- Properties added: 3 (`sessionGeneration`, `engineQueue`, `minimumSamplesForASR` in AudioCaptureManager)
+- Methods added: 4 (`_startRecording`, `_stopRecording`, `_cancelRecording`, `_teardownEngine` in AudioCaptureManager)
+- Methods removed: 0 (public API unchanged; original method bodies now delegate to private `engineQueue`-synchronized implementations)
+
+
 ## [2026-04-22] Feature Addition — History Copy Button & Bug Fixes
 
 ### Feature: Copy button added to history records

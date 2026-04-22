@@ -6,32 +6,71 @@ import CoreAudio
 import Observation
 
 @Observable final class AudioCaptureManager: @unchecked Sendable {
-    private let audioEngine = AVAudioEngine()
     private(set) var isRecording = false
     @MainActor private(set) var audioLevel: Float = 0.0
     private var audioBuffer: [Float] = []
     private let targetSampleRate: Double = 16000.0
     private let lock = NSLock()
-    private var converter: AVAudioConverter?
+
+    /// 録音セッションごとにインクリメントする世代カウンター。
+    /// tap コールバック内で自分が現役セッションかどうかを判定するために使う。
+    private var sessionGeneration: UInt64 = 0
+
+    /// 録音の開始・停止・キャンセルを直列化するためのシリアルキュー。
+    /// AVAudioEngine の操作が同時に走ることを防ぐ。
+    private let engineQueue = DispatchQueue(
+        label: "com.vibingspeech.audioengine", qos: .userInteractive)
+
+    /// 現在の録音セッションで使用中の AVAudioEngine。
+    /// 録音ごとに新規生成し、停止時に破棄する。
+    private var audioEngine: AVAudioEngine?
     private var hasInstalledTap = false
+
+    /// ASR の WhisperFeatureExtractor が安全に処理できる最小サンプル数。
+    /// nFFT(400) + hopLength(160) 以上のサンプルが必要。余裕を持って 800 サンプル(50ms)を閾値にする。
+    static let minimumSamplesForASR = 800
 
     init() {}
 
     func startRecording(microphoneID: String?) throws {
-        audioEngine.stop()
-        audioEngine.reset()
-        if hasInstalledTap {
-            audioEngine.inputNode.removeTap(onBus: 0)
-            hasInstalledTap = false
+        try engineQueue.sync {
+            try self._startRecording(microphoneID: microphoneID)
         }
+    }
+
+    func stopRecording() -> [Float] {
+        return engineQueue.sync {
+            self._stopRecording()
+        }
+    }
+
+    func cancelRecording() {
+        engineQueue.sync {
+            self._cancelRecording()
+        }
+    }
+
+    // MARK: - 内部実装（すべて engineQueue 上で実行される）
+
+    private func _startRecording(microphoneID: String?) throws {
+        // 前回のセッションが残っていれば確実にクリーンアップする
+        _teardownEngine()
+
+        sessionGeneration &+= 1
+        let currentGeneration = sessionGeneration
 
         lock.lock()
         audioBuffer.removeAll()
         lock.unlock()
 
-        try configureInputDevice(microphoneID)
+        // 録音ごとに新しい AVAudioEngine を生成する。
+        // 使い回しによるライフサイクル競合を根本的に排除する。
+        let engine = AVAudioEngine()
+        self.audioEngine = engine
 
-        let inputNode = audioEngine.inputNode
+        try configureInputDevice(engine: engine, microphoneID: microphoneID)
+
+        let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
         guard
@@ -42,18 +81,29 @@ import Observation
                 interleaved: false
             )
         else {
+            self.audioEngine = nil
             throw NSError(
                 domain: "AudioCaptureManager", code: -1,
                 userInfo: [NSLocalizedDescriptionKey: "Failed to create output audio format"])
         }
 
-        converter = AVAudioConverter(from: inputFormat, to: outputFormat)
+        // converter を tap クロージャにキャプチャするローカル変数として生成する。
+        // self のプロパティとして共有しないことで、古い tap コールバックが
+        // 新しいセッション用の converter を掴む問題を根本的に排除する。
+        guard let localConverter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
+            self.audioEngine = nil
+            throw NSError(
+                domain: "AudioCaptureManager", code: -5,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create audio converter"])
+        }
 
         let targetSampleRate = self.targetSampleRate
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] buffer, _ in
             guard let self = self else { return }
-            guard let converter = self.converter else { return }
+
+            // 自分が現役セッションでなければ即座にリターンする
+            guard self.sessionGeneration == currentGeneration else { return }
 
             let capacity = AVAudioFrameCount(
                 Double(buffer.frameLength) * targetSampleRate / inputFormat.sampleRate
@@ -68,7 +118,7 @@ import Observation
 
             var error: NSError?
             var inputConsumed = false
-            converter.convert(to: convertedBuffer, error: &error) { _, status in
+            localConverter.convert(to: convertedBuffer, error: &error) { _, status in
                 if inputConsumed {
                     status.pointee = .noDataNow
                     return nil
@@ -92,6 +142,9 @@ import Observation
                     count: frameCount
                 ))
 
+            // 書き込み前に再度世代を確認する（変換処理中に stop された可能性がある）
+            guard self.sessionGeneration == currentGeneration else { return }
+
             self.lock.lock()
             self.audioBuffer.append(contentsOf: samples)
             self.lock.unlock()
@@ -105,21 +158,18 @@ import Observation
         }
         hasInstalledTap = true
 
-        audioEngine.prepare()
-        try audioEngine.start()
+        engine.prepare()
+        try engine.start()
         isRecording = true
         Task { @MainActor [weak self] in
             self?.audioLevel = 0.0
         }
     }
 
-    func stopRecording() -> [Float] {
-        if hasInstalledTap {
-            audioEngine.inputNode.removeTap(onBus: 0)
-            hasInstalledTap = false
-        }
-        audioEngine.stop()
-        audioEngine.reset()
+    private func _stopRecording() -> [Float] {
+        sessionGeneration &+= 1
+
+        _teardownEngine()
         isRecording = false
         Task { @MainActor [weak self] in
             self?.audioLevel = 0.0
@@ -133,13 +183,10 @@ import Observation
         return buffer
     }
 
-    func cancelRecording() {
-        if hasInstalledTap {
-            audioEngine.inputNode.removeTap(onBus: 0)
-            hasInstalledTap = false
-        }
-        audioEngine.stop()
-        audioEngine.reset()
+    private func _cancelRecording() {
+        sessionGeneration &+= 1
+
+        _teardownEngine()
         isRecording = false
         Task { @MainActor [weak self] in
             self?.audioLevel = 0.0
@@ -150,7 +197,20 @@ import Observation
         lock.unlock()
     }
 
-    private func configureInputDevice(_ microphoneID: String?) throws {
+    /// AVAudioEngine の tap 除去・停止・破棄を安全に行うヘルパー
+    private func _teardownEngine() {
+        guard let engine = audioEngine else { return }
+
+        if hasInstalledTap {
+            engine.inputNode.removeTap(onBus: 0)
+            hasInstalledTap = false
+        }
+        engine.stop()
+        engine.reset()
+        audioEngine = nil
+    }
+
+    private func configureInputDevice(engine: AVAudioEngine, microphoneID: String?) throws {
         let deviceID: AudioDeviceID
 
         if let microphoneID, !microphoneID.isEmpty {
@@ -167,7 +227,7 @@ import Observation
         }
 
         do {
-            try audioEngine.inputNode.auAudioUnit.setDeviceID(deviceID)
+            try engine.inputNode.auAudioUnit.setDeviceID(deviceID)
         } catch {
             throw NSError(
                 domain: "AudioCaptureManager",

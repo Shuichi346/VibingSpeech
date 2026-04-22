@@ -224,6 +224,19 @@ import Observation
 
     private func stopRecordingAndTranscribe() {
         let audioSamples = audioCapture.stopRecording()
+
+        // 音声サンプルが ASR の最小要件を満たさない場合は文字起こしをスキップする。
+        // WhisperFeatureExtractor は内部で reflect padding と STFT を行うため、
+        // 極端に短い配列（連打等で発生）を渡すと Index out of range でクラッシュする。
+        guard audioSamples.count >= AudioCaptureManager.minimumSamplesForASR else {
+            SoundFeedback.playStopSound(isEnabled: settings.soundFeedbackEnabled)
+            recordingState = .idle
+            isToggleMode = false
+            hotkeyPressedAt = nil
+            onRecordingStateChanged?(.idle)
+            return
+        }
+
         let audioDuration = Double(audioSamples.count) / 16000.0
         SoundFeedback.playStopSound(isEnabled: settings.soundFeedbackEnabled)
         recordingState = .transcribing
