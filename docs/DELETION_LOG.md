@@ -1,5 +1,28 @@
 # Code Deletion Log
 
+## [2026-04-22] Feature Addition — History Copy Button & Bug Fixes
+
+### Feature: Copy button added to history records
+- Sources/VibingSpeech/Views/MainWindow/HistoryView.swift — Added `import AppKit` for `NSPasteboard` access
+- Sources/VibingSpeech/Views/MainWindow/HistoryView.swift — Added `@State private var copiedRecordID: UUID?` to track copy feedback state
+- Sources/VibingSpeech/Views/MainWindow/HistoryView.swift — Added `recordActionButtons(for:)` private method that renders copy and delete buttons for each history record
+- Sources/VibingSpeech/Views/MainWindow/HistoryView.swift — Added `copyToClipboard(_:recordID:)` private method that copies text to `NSPasteboard.general` and shows a temporary checkmark icon for 1.5 seconds
+- Sources/VibingSpeech/Views/MainWindow/HistoryView.swift — For LLM-processed records: copy button renders as a `Menu` with two options — "Copy Processed Text" (LLM output) and "Copy Original Transcription" (raw ASR text)
+- Sources/VibingSpeech/Views/MainWindow/HistoryView.swift — For non-LLM records: copy button renders as a simple `Button` that copies `record.text`
+- Sources/VibingSpeech/Views/MainWindow/HistoryView.swift — Copy button placed immediately left of the existing trash button using `HStack(spacing: 4)`
+- Sources/VibingSpeech/Views/MainWindow/HistoryView.swift — `Menu` uses `.menuIndicator(.hidden)` and `.fixedSize()` to match the compact appearance of adjacent icon buttons
+
+### Fix: Search now includes original transcription text
+- Sources/VibingSpeech/Views/MainWindow/HistoryView.swift — `filteredRecords` now also matches against `record.originalText` in addition to `record.text`
+
+### Impact
+- Files modified: 1 (HistoryView.swift)
+- Files added: 0
+- Files deleted: 0
+- Imports added: 1 (`AppKit` in HistoryView)
+- Properties added: 1 (`copiedRecordID` in HistoryView)
+- Methods added: 2 (`recordActionButtons`, `copyToClipboard`)
+
 ## [2026-04-21] Bug Fix Session — Multi-Language Detection & Safety Improvements
 
 ### Critical: Latin-script languages all detected as English

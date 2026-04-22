@@ -1,12 +1,14 @@
 //  HistoryView.swift
 //  VibingSpeech
 
+import AppKit
 import SwiftUI
 
 struct HistoryView: View {
     @Bindable var appState: AppState
     @State private var showClearConfirmation = false
     @State private var searchText = ""
+    @State private var copiedRecordID: UUID?
 
     private var filteredRecords: [TranscriptionRecord] {
         if searchText.isEmpty {
@@ -14,6 +16,7 @@ struct HistoryView: View {
         }
         return appState.history.records.filter {
             $0.text.localizedCaseInsensitiveContains(searchText)
+                || ($0.originalText?.localizedCaseInsensitiveContains(searchText) ?? false)
         }
     }
 
@@ -118,12 +121,8 @@ struct HistoryView: View {
                                         }
                                     }
                                     Spacer()
-                                    Button(role: .destructive) {
-                                        appState.history.delete(record)
-                                    } label: {
-                                        Image(systemName: "trash")
-                                    }
-                                    .buttonStyle(.borderless)
+
+                                    recordActionButtons(for: record)
                                 }
                                 HStack(spacing: 12) {
                                     Text(record.formattedTime)
@@ -149,5 +148,73 @@ struct HistoryView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// 各レコードのコピー・削除ボタンを生成する
+    @ViewBuilder
+    private func recordActionButtons(for record: TranscriptionRecord) -> some View {
+        let isCopied = copiedRecordID == record.id
+
+        HStack(spacing: 4) {
+            if record.wasProcessedByLLM {
+                // LLM処理済み: メニューで処理後テキスト/オリジナルを選択してコピー
+                Menu {
+                    Button {
+                        copyToClipboard(record.text, recordID: record.id)
+                    } label: {
+                        Label("Copy Processed Text", systemImage: "doc.on.doc")
+                    }
+                    if let original = record.originalText {
+                        Button {
+                            copyToClipboard(original, recordID: record.id)
+                        } label: {
+                            Label("Copy Original Transcription", systemImage: "text.quote")
+                        }
+                    }
+                } label: {
+                    Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
+                        .foregroundColor(isCopied ? .green : .secondary)
+                        .frame(width: 16, height: 16)
+                }
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Copy text")
+            } else {
+                // 通常レコード: シンプルなコピーボタン
+                Button {
+                    copyToClipboard(record.text, recordID: record.id)
+                } label: {
+                    Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
+                        .foregroundColor(isCopied ? .green : .secondary)
+                }
+                .buttonStyle(.borderless)
+                .help("Copy text")
+            }
+
+            Button(role: .destructive) {
+                appState.history.delete(record)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+        }
+    }
+
+    /// テキストをクリップボードにコピーし、一時的にチェックマークを表示する
+    private func copyToClipboard(_ text: String, recordID: UUID) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+
+        withAnimation(.easeInOut(duration: 0.2)) {
+            copiedRecordID = recordID
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                if copiedRecordID == recordID {
+                    copiedRecordID = nil
+                }
+            }
+        }
     }
 }
