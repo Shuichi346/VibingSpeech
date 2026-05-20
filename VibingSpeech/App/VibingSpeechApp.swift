@@ -47,6 +47,7 @@ final class AppCoordinator: ObservableObject {
     @Published var textProcessing = TextProcessingService()
     @Published var phase: RecordingPhase = .idle
     @Published var asrModelLoaded = false
+    @Published var asrModelIsLoading = false
     @Published var asrStatusMessage = "Loading model..."
     @Published var lastError: String?
     @Published var availableMicrophones: [MicrophoneDevice] = [.systemDefault]
@@ -61,6 +62,7 @@ final class AppCoordinator: ObservableObject {
     private var menuBarController: MenuBarController?
     private var overlayController: RecordingOverlayController?
     private var startupStarted = false
+    private var asrLoadGeneration = UUID()
 
     var preferredColorScheme: ColorScheme? {
         switch settings.appearanceMode {
@@ -138,15 +140,23 @@ final class AppCoordinator: ObservableObject {
 
     func loadASRModel() async {
         guard phase == .idle else { return }
+        let variant = settings.asrModelVariant
+        let generation = UUID()
+        asrLoadGeneration = generation
         asrModelLoaded = false
-        asrStatusMessage = "Loading model..."
+        asrModelIsLoading = true
+        asrStatusMessage = "Preparing \(variant.displayName)..."
         do {
-            try await asrService.load(variant: settings.asrModelVariant)
+            try await asrService.load(variant: variant)
+            guard asrLoadGeneration == generation else { return }
             asrModelLoaded = true
+            asrModelIsLoading = false
             asrStatusMessage = "Ready to record"
             lastError = nil
         } catch {
+            guard asrLoadGeneration == generation else { return }
             asrModelLoaded = false
+            asrModelIsLoading = false
             asrStatusMessage = "ASR integration unavailable"
             lastError = error.localizedDescription
         }
@@ -208,7 +218,7 @@ final class AppCoordinator: ObservableObject {
                     language: settings.languageMode,
                     detectedLanguage: asrResult.detectedLanguage
                 )
-                originalText = finalText == asrResult.text ? nil : asrResult.text
+                originalText = asrResult.text
                 processedByLLM = true
             } else {
                 finalText = asrResult.text

@@ -182,7 +182,9 @@ private struct HomeView: View {
                 .frame(height: 54)
                 .background(.quaternary.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
 
-                SettingsCard(coordinator: coordinator, settings: settings)
+                ModelActivityPanel(coordinator: coordinator, settings: settings, textProcessing: coordinator.textProcessing)
+
+                SettingsCard(coordinator: coordinator, settings: settings, textProcessing: coordinator.textProcessing)
 
                 if let error = coordinator.lastError {
                     Text(error)
@@ -203,12 +205,20 @@ private struct StatusBadge: View {
 
     var body: some View {
         HStack(spacing: 7) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 7, height: 7)
+            if coordinator.asrModelIsLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 12, height: 12)
+            } else {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 7, height: 7)
+            }
             Text(statusText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
     }
 
@@ -221,6 +231,70 @@ private struct StatusBadge: View {
     private var statusText: String {
         if !coordinator.permissions.accessibilityGranted { return "Hotkey setup required" }
         return coordinator.asrStatusMessage
+    }
+}
+
+private struct ModelActivityPanel: View {
+    @ObservedObject var coordinator: AppCoordinator
+    @ObservedObject var settings: SettingsStore
+    @ObservedObject var textProcessing: TextProcessingService
+
+    private var isVisible: Bool {
+        coordinator.asrModelIsLoading || textProcessing.isLoading
+    }
+
+    var body: some View {
+        if isVisible {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Preparing models")
+                        .font(.callout.weight(.medium))
+                    Spacer()
+                }
+
+                if coordinator.asrModelIsLoading {
+                    ModelActivityRow(
+                        title: "ASR",
+                        message: "Downloading or loading \(settings.asrModelVariant.displayName) (\(settings.asrModelVariant.estimatedDownloadSize))"
+                    )
+                }
+
+                if textProcessing.isLoading {
+                    ModelActivityRow(
+                        title: "LLM",
+                        message: "Preparing \(TextProcessingService.modelIdentifier)"
+                    )
+                }
+            }
+            .padding(12)
+            .background(.quaternary.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.accentColor.opacity(0.18))
+            }
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+}
+
+private struct ModelActivityRow: View {
+    let title: String
+    let message: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 30, alignment: .leading)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+        }
     }
 }
 
@@ -248,6 +322,7 @@ private struct StatBlock: View {
 private struct SettingsCard: View {
     @ObservedObject var coordinator: AppCoordinator
     @ObservedObject var settings: SettingsStore
+    @ObservedObject var textProcessing: TextProcessingService
 
     var body: some View {
         VStack(spacing: 14) {
@@ -307,8 +382,16 @@ private struct SettingsCard: View {
 
                 if settings.textProcessingEnabled {
                     HStack(spacing: 7) {
-                        Circle().fill(Color.green).frame(width: 6, height: 6)
-                        Text(coordinator.textProcessing.isReady ? "Text processing ready" : "Loading text processor...")
+                        if textProcessing.isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                                .frame(width: 12, height: 12)
+                        } else {
+                            Circle()
+                                .fill(textProcessing.isReady ? Color.green : Color.orange)
+                                .frame(width: 6, height: 6)
+                        }
+                        Text(textProcessing.isReady ? "Text processing ready" : "Loading text processor...")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -363,10 +446,30 @@ private struct SettingsCard: View {
                         }
                     }
                     .pickerStyle(.menu)
-                    .disabled(coordinator.phase != .idle)
+                    .disabled(coordinator.phase != .idle || coordinator.asrModelIsLoading)
                     .onChange(of: settings.asrModelVariant) {
                         Task { await coordinator.loadASRModel() }
                     }
+                }
+                if coordinator.asrModelIsLoading || !coordinator.asrModelLoaded {
+                    HStack(spacing: 7) {
+                        if coordinator.asrModelIsLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                                .frame(width: 12, height: 12)
+                        } else {
+                            Circle()
+                                .fill(Color.orange)
+                                .frame(width: 6, height: 6)
+                        }
+                        Text(coordinator.asrStatusMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 11)
                 }
             }
 
@@ -598,7 +701,7 @@ private struct HistoryView: View {
                                 ForEach(records) { record in
                                     HistoryRow(
                                         record: record,
-                                        copy: { coordinator.copyToClipboard(record.finalText) },
+                                        copy: coordinator.copyToClipboard,
                                         delete: { coordinator.deleteHistoryRecord(record) }
                                     )
                                     if record.id != records.last?.id {
@@ -627,8 +730,21 @@ private struct HistoryView: View {
 
 private struct HistoryRow: View {
     let record: TranscriptionRecord
-    let copy: () -> Void
+    let copy: (String) -> Void
     let delete: () -> Void
+    @State private var copiedKind: HistoryCopyKind?
+
+    private var finalCopyOption: HistoryCopyOption {
+        HistoryCopyOption(
+            kind: record.wasProcessedByLLM ? .llmEdit : .transcription,
+            text: record.finalText
+        )
+    }
+
+    private var originalCopyOption: HistoryCopyOption? {
+        guard record.wasProcessedByLLM, let original = record.originalASRText else { return nil }
+        return HistoryCopyOption(kind: .originalTranscription, text: original)
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -638,29 +754,42 @@ private struct HistoryRow: View {
                 .frame(width: 50, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text(record.finalText)
-                    .lineLimit(4)
+                HStack(alignment: .top, spacing: 8) {
+                    Text(record.finalText)
+                        .lineLimit(4)
+
+                    HistoryCopyButton(
+                        option: finalCopyOption,
+                        isCopied: copiedKind == finalCopyOption.kind,
+                        action: { performCopy(finalCopyOption) }
+                    )
+                }
                 Text("\(record.wordCount) words")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if record.wasProcessedByLLM, let original = record.originalASRText {
                     DisclosureGroup("Original ASR text") {
-                        Text(original)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 4)
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(original)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 4)
+
+                            if let originalCopyOption {
+                                HistoryCopyButton(
+                                    option: originalCopyOption,
+                                    isCopied: copiedKind == originalCopyOption.kind,
+                                    action: { performCopy(originalCopyOption) }
+                                )
+                                .padding(.top, 1)
+                            }
+                        }
                     }
                     .font(.caption)
                 }
             }
 
             Spacer()
-
-            Button(action: copy) {
-                Image(systemName: "doc.on.doc")
-            }
-            .buttonStyle(.borderless)
-            .help("Copy")
 
             Button(role: .destructive, action: delete) {
                 Image(systemName: "trash")
@@ -670,8 +799,112 @@ private struct HistoryRow: View {
         }
         .padding(10)
         .contextMenu {
-            Button("Copy") { copy() }
+            Button {
+                performCopy(finalCopyOption)
+            } label: {
+                Label(finalCopyOption.copyMenuTitle, systemImage: finalCopyOption.systemImage)
+            }
+
+            if let originalCopyOption {
+                Button {
+                    performCopy(originalCopyOption)
+                } label: {
+                    Label(originalCopyOption.copyMenuTitle, systemImage: originalCopyOption.systemImage)
+                }
+            }
+
             Button("Delete", role: .destructive) { delete() }
         }
+    }
+
+    private func performCopy(_ option: HistoryCopyOption) {
+        copy(option.text)
+        copiedKind = option.kind
+
+        Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            await MainActor.run {
+                if copiedKind == option.kind {
+                    copiedKind = nil
+                }
+            }
+        }
+    }
+}
+
+private enum HistoryCopyKind: Hashable {
+    case llmEdit
+    case transcription
+    case originalTranscription
+}
+
+private struct HistoryCopyOption {
+    let kind: HistoryCopyKind
+    let text: String
+
+    var title: String {
+        switch kind {
+        case .llmEdit:
+            "LLM edit"
+        case .transcription:
+            "Transcription"
+        case .originalTranscription:
+            "Original"
+        }
+    }
+
+    var copyMenuTitle: String {
+        switch kind {
+        case .llmEdit:
+            "Copy LLM edit"
+        case .transcription:
+            "Copy transcription"
+        case .originalTranscription:
+            "Copy original transcription"
+        }
+    }
+
+    var copiedTitle: String {
+        switch kind {
+        case .llmEdit:
+            "Copied edit"
+        case .transcription:
+            "Copied transcription"
+        case .originalTranscription:
+            "Copied original"
+        }
+    }
+
+    var systemImage: String {
+        switch kind {
+        case .llmEdit:
+            "wand.and.stars"
+        case .transcription:
+            "waveform"
+        case .originalTranscription:
+            "text.quote"
+        }
+    }
+}
+
+private struct HistoryCopyButton: View {
+    let option: HistoryCopyOption
+    let isCopied: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(
+                isCopied ? option.copiedTitle : option.title,
+                systemImage: isCopied ? "checkmark" : option.systemImage
+            )
+            .font(.caption)
+            .labelStyle(.titleAndIcon)
+            .fixedSize()
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(isCopied ? Color.green : Color.secondary)
+        .help(isCopied ? option.copiedTitle : option.copyMenuTitle)
+        .accessibilityLabel(option.copyMenuTitle)
     }
 }

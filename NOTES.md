@@ -2,6 +2,11 @@
 
 ## 2026-05-20
 
+- History rows now copy by source: the visible `finalText` is copied as the LLM edit when `wasProcessedByLLM` is true, raw ASR text is copied from `originalASRText`, and unprocessed rows copy `finalText` as the transcription.
+- `AppCoordinator.finishRecordingAndTranscribe()` now keeps `originalASRText` populated for every LLM-processed record, even when the edited text matches the raw ASR text, so History can still offer a separate transcription copy action.
+- Xcode MCP build passed after the History copy update. The MCP test runner could not load `VibingSpeechTests` because of a local Team ID signing mismatch, while `xcodebuild -project VibingSpeech.xcodeproj -scheme VibingSpeech -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO test` passed all 11 tests.
+- Model preparation now surfaces in `VibingSpeech/Views/ContentView.swift` through a Home panel, status badge spinner, and inline ASR/LLM rows. `AppCoordinator.loadASRModel()` also tracks `asrModelIsLoading` and ignores stale async completions with a generation token.
+- The LLM loading panel originally stayed visible because views read `coordinator.textProcessing.isLoading` without directly observing the nested `TextProcessingService`; `ModelActivityPanel` and `SettingsCard` now receive it as an `@ObservedObject`.
 - The menu-bar Show Window action failed after closing the main window because `showMainWindow()` only searched `NSApp.windows` after SwiftUI had removed the window. `MainWindowController` now registers the `NSWindow`, intercepts close with `windowShouldClose`, hides it with `orderOut(nil)`, and restores it with `makeKeyAndOrderFront(nil)`.
 - The main window was constrained to a fixed 760 x 560 SwiftUI content size through `AppLayout` and `.windowResizability(.contentSize)` in `VibingSpeech/App/VibingSpeechApp.swift`; detail pages remain scrollable inside that viewport instead of letting the window stretch horizontally.
 - The sidebar collapse icon in `VibingSpeech/Views/ContentView.swift` now toggles between the full 146 pt navigation sidebar and a 46 pt restore rail. Keep both states available so users are not trapped after hiding navigation.

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added source-specific History copy controls for LLM-edited text, transcription text, and original ASR text, with distinct icons and copied-state feedback.
+- Added visible ASR and LLM preparation indicators so model downloads and loading are no longer silent, and fixed the LLM loading indicator so it clears when the text processor becomes ready.
 - Fixed the menu-bar Show Window action so the main window reappears after the user closes it.
 - Refined the main macOS window UI with a native gray sidebar, subtle source-list selection, grouped settings sections, a fixed 760 x 560 content size, scrollable detail panes, and a working sidebar collapse/restore control.
 - Moved the recording overlay to a compact bottom-centered capsule, removed phase text, and made the waveform respond more visibly to microphone input levels.

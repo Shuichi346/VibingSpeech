@@ -10,3 +10,5 @@ Project instructions for coding agents working in this repository.
 - Keep the recording overlay compact and bottom-centered. Its 150 x 33 panel geometry lives in `VibingSpeech/Views/RecordingOverlay.swift`, and the overlay should not show phase text unless that UI direction changes explicitly.
 - Keep the main window content size fixed at 760 x 560 via `AppLayout` and `.windowResizability(.contentSize)`. Make overflowing detail content scroll inside the window, and preserve a working sidebar collapse/restore path.
 - Preserve `MainWindowController` in `VibingSpeech/App/VibingSpeechApp.swift`: closing the main window should hide it, not destroy it, so the menu-bar Show Window item can restore the same window.
+- When SwiftUI views depend on nested `ObservableObject` services such as `TextProcessingService`, pass and observe the service directly instead of only reading it through `AppCoordinator`; otherwise nested `@Published` changes may not refresh loading indicators.
+- Keep `TranscriptionRecord.originalASRText` populated for LLM-processed history records so the History tab can copy both the edited text and the original transcription separately.
