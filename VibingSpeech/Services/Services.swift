@@ -9,6 +9,10 @@ import AudioCommon
 import Qwen3ASR
 #endif
 
+#if canImport(Qwen3Chat)
+import Qwen3Chat
+#endif
+
 @MainActor
 final class PermissionService: ObservableObject {
     @Published private(set) var microphoneGranted = false
@@ -394,6 +398,23 @@ enum ASRServiceError: LocalizedError {
     }
 }
 
+enum TextProcessingServiceError: LocalizedError {
+    case modelUnavailable
+    case emptyPrompt
+    case emptyResult
+
+    var errorDescription: String? {
+        switch self {
+        case .modelUnavailable:
+            "Qwen3.5 text processing is not linked or could not be loaded."
+        case .emptyPrompt:
+            "A custom text processing prompt is required."
+        case .emptyResult:
+            "The text processor returned no text."
+        }
+    }
+}
+
 actor ASRService {
     private(set) var loadedVariant: ASRModelVariant?
 
@@ -431,6 +452,65 @@ actor ASRService {
         return ASRResult(text: text, detectedLanguage: languageHint ?? transcription.language)
         #else
         throw ASRServiceError.modelUnavailable
+        #endif
+    }
+}
+
+actor TextProcessingBackend {
+    #if canImport(Qwen3Chat)
+    private var chat: Qwen35MLXChat?
+    #endif
+
+    func load() async throws {
+        #if canImport(Qwen3Chat)
+        if chat?.isLoaded == true { return }
+        let cacheDirectory = try HuggingFaceDownloader.getCacheDirectory(for: TextProcessingService.modelIdentifier)
+        try await HuggingFaceDownloader.downloadWeights(
+            modelId: TextProcessingService.modelIdentifier,
+            to: cacheDirectory,
+            additionalFiles: [
+                "chat_template.jinja",
+                "tokenizer.json",
+                "tokenizer_config.json",
+                "vocab.json"
+            ]
+        )
+        chat = try await Qwen35MLXChat.fromLocal(directory: cacheDirectory)
+        #else
+        throw TextProcessingServiceError.modelUnavailable
+        #endif
+    }
+
+    func unload() {
+        #if canImport(Qwen3Chat)
+        chat?.unload()
+        chat = nil
+        #endif
+    }
+
+    func process(_ text: String, systemPrompt: String) async throws -> String {
+        #if canImport(Qwen3Chat)
+        guard let chat, chat.isLoaded else { throw TextProcessingServiceError.modelUnavailable }
+        let sampling = ChatSamplingConfig(
+            temperature: 0.7,
+            topK: 20,
+            topP: 0.8,
+            maxTokens: 512,
+            repetitionPenalty: 1.0
+        )
+        let output = try chat.generate(
+            messages: [
+                ChatMessage(role: .system, content: systemPrompt),
+                ChatMessage(role: .user, content: text)
+            ],
+            sampling: sampling
+        )
+        let stripped = TextProcessingService.stripThinkingBlocks(from: output)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !stripped.isEmpty else { throw TextProcessingServiceError.emptyResult }
+        return stripped
+        #else
+        throw TextProcessingServiceError.modelUnavailable
         #endif
     }
 }
@@ -482,41 +562,80 @@ final class LaunchAtLoginService: ObservableObject {
 
 @MainActor
 final class TextProcessingService: ObservableObject {
-    static let modelIdentifier = "mlx-community/Qwen3.5-4B-MLX-4bit"
+    nonisolated static let modelIdentifier = "mlx-community/Qwen3.5-4B-MLX-4bit"
 
     @Published private(set) var isReady = false
     @Published private(set) var isLoading = false
+    @Published private(set) var statusMessage = "Text processor unloaded"
 
+    var onStateChange: (() -> Void)?
+
+    private let backend = TextProcessingBackend()
     private var loadGeneration = UUID()
+    private var enabled = false
 
     func setEnabled(_ enabled: Bool) {
+        self.enabled = enabled
         loadGeneration = UUID()
         let generation = loadGeneration
         if enabled {
-            isLoading = true
             Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(250))
-                guard self.loadGeneration == generation else { return }
-                self.isLoading = false
-                self.isReady = true
+                try? await loadIfNeeded(generation: generation)
             }
         } else {
             isLoading = false
             isReady = false
+            statusMessage = "Text processor unloaded"
+            Task {
+                await backend.unload()
+            }
+            onStateChange?()
         }
     }
 
     func process(_ text: String, preset: TextProcessingPreset, customPrompt: String, language: LanguageMode, detectedLanguage: String?) async throws -> String {
-        let stripped = Self.stripThinkingBlocks(from: text).trimmingCharacters(in: .whitespacesAndNewlines)
-        switch preset {
-        case .fixTypos, .custom:
-            return stripped
-        case .bulletPoints:
-            let pieces = stripped
-                .split(whereSeparator: { ".\n".contains($0) })
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-            return pieces.isEmpty ? stripped : pieces.map { "- \($0)" }.joined(separator: "\n")
+        guard enabled else { throw TextProcessingServiceError.modelUnavailable }
+        let systemPrompt = preset.systemPrompt(
+            detectedLanguage: detectedLanguage,
+            selectedLanguage: language,
+            customPrompt: customPrompt
+        )
+        guard !systemPrompt.isEmpty else { throw TextProcessingServiceError.emptyPrompt }
+        let input = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !input.isEmpty else { throw TextProcessingServiceError.emptyResult }
+
+        try await loadIfNeeded(generation: loadGeneration)
+        return try await backend.process(input, systemPrompt: systemPrompt)
+    }
+
+    func unloadAfterIdle() async {
+        loadGeneration = UUID()
+        await backend.unload()
+        isLoading = false
+        isReady = false
+        statusMessage = "Text processor unloaded after idle timeout"
+        onStateChange?()
+    }
+
+    private func loadIfNeeded(generation: UUID) async throws {
+        if isReady { return }
+        isLoading = true
+        statusMessage = "Loading text processor..."
+        onStateChange?()
+        do {
+            try await backend.load()
+            guard loadGeneration == generation, enabled else { return }
+            isLoading = false
+            isReady = true
+            statusMessage = "Text processing ready"
+            onStateChange?()
+        } catch {
+            guard loadGeneration == generation, enabled else { return }
+            isLoading = false
+            isReady = false
+            statusMessage = error.localizedDescription
+            onStateChange?()
+            throw error
         }
     }
 

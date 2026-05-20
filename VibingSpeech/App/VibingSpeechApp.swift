@@ -103,6 +103,9 @@ final class AppCoordinator: ObservableObject {
         microphoneRecorder.onRMSLevel = { [weak self] level in
             self?.overlayState.rmsLevel = level
         }
+        textProcessing.onStateChange = { [weak self] in
+            self?.scheduleModelUnloadIfNeeded()
+        }
         availableMicrophones = microphoneRecorder.availableInputDevices()
         launchAtLogin.refresh()
 
@@ -222,17 +225,25 @@ final class AppCoordinator: ObservableObject {
             let finalText: String
             let originalText: String?
             let processedByLLM: Bool
+            var textProcessingError: String?
 
-            if settings.textProcessingEnabled, textProcessing.isReady {
-                finalText = try await textProcessing.process(
-                    asrResult.text,
-                    preset: settings.textProcessingPreset,
-                    customPrompt: settings.customPrompt,
-                    language: settings.languageMode,
-                    detectedLanguage: asrResult.detectedLanguage
-                )
-                originalText = asrResult.text
-                processedByLLM = true
+            if settings.textProcessingEnabled {
+                do {
+                    finalText = try await textProcessing.process(
+                        asrResult.text,
+                        preset: settings.textProcessingPreset,
+                        customPrompt: settings.customPrompt,
+                        language: settings.languageMode,
+                        detectedLanguage: asrResult.detectedLanguage
+                    )
+                    originalText = asrResult.text
+                    processedByLLM = true
+                } catch {
+                    finalText = asrResult.text
+                    originalText = nil
+                    processedByLLM = false
+                    textProcessingError = "Text processing failed: \(error.localizedDescription)"
+                }
             } else {
                 finalText = asrResult.text
                 originalText = nil
@@ -248,7 +259,7 @@ final class AppCoordinator: ObservableObject {
                 wasProcessedByLLM: processedByLLM
             )
             history.add(record, retention: settings.historyRetention)
-            lastError = nil
+            lastError = textProcessingError
         } catch {
             lastError = error.localizedDescription
         }
@@ -326,12 +337,16 @@ final class AppCoordinator: ObservableObject {
     private func scheduleModelUnloadIfNeeded() {
         cancelModelUnloadTimer()
         let delayMinutes = SettingsStore.clampedModelUnloadDelayMinutes(settings.modelUnloadDelayMinutes)
-        guard delayMinutes > 0, phase == .idle, asrModelLoaded, !asrModelIsLoading else { return }
+        guard delayMinutes > 0,
+              phase == .idle,
+              !asrModelIsLoading,
+              !textProcessing.isLoading,
+              asrModelLoaded || textProcessing.isReady else { return }
 
         modelUnloadTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delayMinutes * 60))
             guard !Task.isCancelled else { return }
-            await self?.unloadASRModelAfterIdle()
+            await self?.unloadModelsAfterIdle()
         }
     }
 
@@ -340,11 +355,16 @@ final class AppCoordinator: ObservableObject {
         modelUnloadTask = nil
     }
 
-    private func unloadASRModelAfterIdle() async {
-        guard phase == .idle, asrModelLoaded, !asrModelIsLoading else { return }
-        await asrService.unload()
-        asrModelLoaded = false
-        asrStatusMessage = "Model unloaded after \(settings.modelUnloadDelayMinutes) minutes idle"
+    private func unloadModelsAfterIdle() async {
+        guard phase == .idle, !asrModelIsLoading, !textProcessing.isLoading else { return }
+        if asrModelLoaded {
+            await asrService.unload()
+            asrModelLoaded = false
+            asrStatusMessage = "Model unloaded after \(settings.modelUnloadDelayMinutes) minutes idle"
+        }
+        if textProcessing.isReady {
+            await textProcessing.unloadAfterIdle()
+        }
     }
 }
 

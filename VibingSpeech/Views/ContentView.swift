@@ -393,7 +393,7 @@ private struct SettingsCard: View {
                                 .fill(textProcessing.isReady ? Color.green : Color.orange)
                                 .frame(width: 6, height: 6)
                         }
-                        Text(textProcessing.isReady ? "Text processing ready" : "Loading text processor...")
+                        Text(textProcessing.statusMessage)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()

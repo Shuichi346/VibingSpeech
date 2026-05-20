@@ -21,6 +21,7 @@
 		10000000000000000000000C /* VibingSpeechUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000C /* VibingSpeechUITests.swift */; };
 		10000000000000000000000D /* Qwen3ASR in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000002 /* Qwen3ASR */; };
 		10000000000000000000000E /* AudioCommon in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000003 /* AudioCommon */; };
+		10000000000000000000000F /* Qwen3Chat in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000004 /* Qwen3Chat */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -60,7 +61,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		500000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (10000000000000000000000D /* Qwen3ASR in Frameworks */, 10000000000000000000000E /* AudioCommon in Frameworks */); runOnlyForDeploymentPostprocessing = 0; };
+		500000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (10000000000000000000000D /* Qwen3ASR in Frameworks */, 10000000000000000000000E /* AudioCommon in Frameworks */, 10000000000000000000000F /* Qwen3Chat in Frameworks */); runOnlyForDeploymentPostprocessing = 0; };
 		500000000000000000000002 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		500000000000000000000003 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
@@ -130,6 +131,7 @@
 			packageProductDependencies = (
 				A00000000000000000000002 /* Qwen3ASR */,
 				A00000000000000000000003 /* AudioCommon */,
+				A00000000000000000000004 /* Qwen3Chat */,
 			);
 			productName = VibingSpeech;
 			productReference = 20000000000000000000000E /* VibingSpeech.app */;
@@ -491,6 +493,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A00000000000000000000001 /* XCRemoteSwiftPackageReference "speech-swift" */;
 			productName = AudioCommon;
+		};
+		A00000000000000000000004 /* Qwen3Chat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000001 /* XCRemoteSwiftPackageReference "speech-swift" */;
+			productName = Qwen3Chat;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

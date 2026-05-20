@@ -2,6 +2,13 @@
 
 ## 2026-05-20
 
+- Added the Other sidebar settings screen with a persisted `modelUnloadDelayMinutes` value. `0` disables idle unloading, the default is 5 minutes, and the maximum is 60 minutes.
+- `AppCoordinator` now keeps both ASR and Text Processing models loaded while recording, transcribing, or text processing is active, then unloads any loaded idle models through the shared inactivity timer.
+- The previous `TextProcessingService.process()` implementation did not call an LLM; it returned stripped ASR text for `fixTypos` and `custom`. Text Processing now uses `Qwen3Chat` and records `wasProcessedByLLM` only when generation succeeds.
+- Qwen3.5-4B does not officially support Qwen3's `/think` or `/nothink` soft switch. Use chat-template `enableThinking: false` for non-thinking mode; the local `speech-swift` `Qwen35MLXChat.generate` path already encodes prompts with `enableThinking: false`.
+- Text Processing uses `mlx-community/Qwen3.5-4B-MLX-4bit` with the supported Qwen non-thinking sampling values exposed by `ChatSamplingConfig`: `temperature=0.7`, `topP=0.8`, `topK=20`, and `repetitionPenalty=1.0`. The current dependency does not expose `min_p` or `presence_penalty`.
+- `Qwen3Chat` had to be added to the app target's linked Swift package products in `VibingSpeech.xcodeproj/project.pbxproj`; otherwise `canImport(Qwen3Chat)` would fail and Text Processing would stay unavailable.
+- `xcodebuild -quiet -project VibingSpeech.xcodeproj -scheme VibingSpeech -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO build` and the matching `test` command passed after the LLM/model idle changes.
 - History rows now copy by source: the visible `finalText` is copied as the LLM edit when `wasProcessedByLLM` is true, raw ASR text is copied from `originalASRText`, and unprocessed rows copy `finalText` as the transcription.
 - `AppCoordinator.finishRecordingAndTranscribe()` now keeps `originalASRText` populated for every LLM-processed record, even when the edited text matches the raw ASR text, so History can still offer a separate transcription copy action.
 - Xcode MCP build passed after the History copy update. The MCP test runner could not load `VibingSpeechTests` because of a local Team ID signing mismatch, while `xcodebuild -project VibingSpeech.xcodeproj -scheme VibingSpeech -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO test` passed all 11 tests.
