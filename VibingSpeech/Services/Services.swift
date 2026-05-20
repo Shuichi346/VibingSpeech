@@ -55,7 +55,6 @@ enum HotkeyServiceError: LocalizedError {
     }
 }
 
-@MainActor
 final class HotkeyService {
     var onStartRecording: (() -> Void)?
     var onStopRecording: (() -> Void)?
@@ -65,7 +64,6 @@ final class HotkeyService {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var hotkey: RecordingHotkey = .rightOption
-    private var pressStartedAt: Date?
     private var longPressWorkItem: DispatchWorkItem?
     private var isModifierDown = false
     private var isHoldModeActive = false
@@ -143,14 +141,11 @@ final class HotkeyService {
 
     private func modifierPressed() {
         isModifierDown = true
-        pressStartedAt = Date()
         let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            Task { @MainActor in
-                guard self.isModifierDown, !self.isToggleRecordingActive else { return }
-                self.isHoldModeActive = true
-                self.onStartRecording?()
-            }
+            guard self.isModifierDown, !self.isToggleRecordingActive else { return }
+            self.isHoldModeActive = true
+            self.onStartRecording?()
         }
         longPressWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
@@ -200,9 +195,7 @@ private let hotkeyEventCallback: CGEventTapCallBack = { _, type, event, userInfo
     let service = Unmanaged<HotkeyService>.fromOpaque(userInfo).takeUnretainedValue()
     let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
     let flags = event.flags
-    Task { @MainActor in
-        service.handle(type: type, keyCode: keyCode, flags: flags)
-    }
+    service.handle(type: type, keyCode: keyCode, flags: flags)
     return Unmanaged.passUnretained(event)
 }
 
@@ -220,6 +213,8 @@ enum MicrophoneRecorderError: LocalizedError {
 
 @MainActor
 final class MicrophoneRecorder: ObservableObject {
+    nonisolated static let minimumSamplesForASR = 800
+
     @Published private(set) var rmsLevel: Double = 0
 
     var onRMSLevel: ((Double) -> Void)?
@@ -228,6 +223,7 @@ final class MicrophoneRecorder: ObservableObject {
     private var samples: [Float] = []
     private var sessionID = UUID()
     private var startTime: Date?
+    private var inputTapInstalled = false
 
     func availableInputDevices() -> [MicrophoneDevice] {
         let discovery = AVCaptureDevice.DiscoverySession(
@@ -262,13 +258,22 @@ final class MicrophoneRecorder: ObservableObject {
                 self.onRMSLevel?(level)
             }
         }
+        inputTapInstalled = true
         engine.prepare()
-        try engine.start()
+        do {
+            try engine.start()
+        } catch {
+            removeInputTapIfNeeded()
+            engine.stop()
+            self.engine = nil
+            startTime = nil
+            throw error
+        }
     }
 
     func stop() -> (samples: [Float], duration: Double) {
         let duration = startTime.map { Date().timeIntervalSince($0) } ?? 0
-        engine?.inputNode.removeTap(onBus: 0)
+        removeInputTapIfNeeded()
         engine?.stop()
         engine = nil
         startTime = nil
@@ -280,7 +285,7 @@ final class MicrophoneRecorder: ObservableObject {
     }
 
     func cancel() {
-        engine?.inputNode.removeTap(onBus: 0)
+        removeInputTapIfNeeded()
         engine?.stop()
         engine = nil
         samples = []
@@ -288,6 +293,12 @@ final class MicrophoneRecorder: ObservableObject {
         sessionID = UUID()
         rmsLevel = 0
         onRMSLevel?(0)
+    }
+
+    private func removeInputTapIfNeeded() {
+        guard inputTapInstalled, let engine else { return }
+        engine.inputNode.removeTap(onBus: 0)
+        inputTapInstalled = false
     }
 
     nonisolated private static func downmixedAndResampledSamples(from buffer: AVAudioPCMBuffer, inputSampleRate: Double) -> [Float] {
@@ -347,7 +358,6 @@ enum ASRServiceError: LocalizedError {
 
 actor ASRService {
     private(set) var loadedVariant: ASRModelVariant?
-    private let minimumSampleCount = 1_600
 
     #if canImport(Qwen3ASR)
     private var model: Qwen3ASRModel?
@@ -365,10 +375,10 @@ actor ASRService {
     }
 
     func transcribe(samples: [Float], languageMode: LanguageMode) async throws -> ASRResult {
-        guard samples.count >= minimumSampleCount else { throw ASRServiceError.shortAudio }
+        guard samples.count >= MicrophoneRecorder.minimumSamplesForASR else { throw ASRServiceError.shortAudio }
         #if canImport(Qwen3ASR)
         guard let model else { throw ASRServiceError.modelUnavailable }
-        let text = try model.transcribe(audio: samples, sampleRate: 16_000)
+        let text = model.transcribe(audio: samples, sampleRate: 16_000)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw ASRServiceError.emptyResult }
         return ASRResult(text: text, detectedLanguage: languageMode.asrLanguageHint)

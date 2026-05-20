@@ -173,11 +173,20 @@ final class AppCoordinator: ObservableObject {
     func finishRecordingAndTranscribe() async {
         guard phase == .recording else { return }
         let capture = microphoneRecorder.stop()
-        phase = .transcribing
-        overlayState.phase = .transcribing
         if settings.soundFeedbackEnabled {
             soundService.playStop()
         }
+
+        guard capture.samples.count >= MicrophoneRecorder.minimumSamplesForASR else {
+            phase = .idle
+            overlayState.phase = .idle
+            overlayController?.hide()
+            lastError = nil
+            return
+        }
+
+        phase = .transcribing
+        overlayState.phase = .transcribing
 
         do {
             let asrResult = try await asrService.transcribe(samples: capture.samples, languageMode: settings.languageMode)

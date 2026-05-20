@@ -34,4 +34,16 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(TextProcessingService.stripThinkingBlocks(from: "A<think>hidden</think>B"), "AB")
         XCTAssertEqual(TextProcessingService.stripThinkingBlocks(from: "<THINK>x</think> Visible"), " Visible")
     }
+
+    func testShortAudioIsRejectedBeforeASRModelUse() async {
+        let service = ASRService()
+        do {
+            _ = try await service.transcribe(samples: [0], languageMode: .auto)
+            XCTFail("Expected short audio to be rejected")
+        } catch ASRServiceError.shortAudio {
+            XCTAssertTrue(true)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
 }

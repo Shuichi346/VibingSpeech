@@ -2,26 +2,37 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var coordinator: AppCoordinator
+    @ObservedObject private var settings: SettingsStore
+
+    init(coordinator: AppCoordinator) {
+        self.coordinator = coordinator
+        _settings = ObservedObject(wrappedValue: coordinator.settings)
+    }
 
     var body: some View {
         HStack(spacing: 0) {
-            SidebarView(settings: coordinator.settings)
+            SidebarView(settings: settings)
             Divider()
-            detail
+            ZStack(alignment: .topLeading) {
+                detail
+                    .id(settings.selectedSidebar)
+                    .transition(.opacity)
+            }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .animation(.easeInOut(duration: 0.12), value: settings.selectedSidebar)
     }
 
     @ViewBuilder
     private var detail: some View {
-        switch coordinator.settings.selectedSidebar {
+        switch settings.selectedSidebar {
         case .home:
-            HomeView(coordinator: coordinator, settings: coordinator.settings)
+            HomeView(coordinator: coordinator, settings: settings)
         case .hotwords:
             HotwordsView(repository: coordinator.hotwords)
         case .history:
-            HistoryView(coordinator: coordinator, repository: coordinator.history, settings: coordinator.settings)
+            HistoryView(coordinator: coordinator, repository: coordinator.history, settings: settings)
         }
     }
 }
@@ -574,4 +585,3 @@ private struct HistoryRow: View {
         }
     }
 }
-
