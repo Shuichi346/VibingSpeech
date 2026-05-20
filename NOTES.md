@@ -2,6 +2,8 @@
 
 ## 2026-05-20
 
+- The recording overlay was changed from a large top-screen status capsule to a 150 x 33 bottom-centered capsule in `VibingSpeech/Views/RecordingOverlay.swift`; the phase text was removed so only the icon and waveform/progress indicator remain.
+- The waveform now responds more strongly to speech by applying a small RMS noise floor and higher scaling in `MicrophoneRecorder.rmsLevel(for:)`, then using that normalized level as the primary bar-height driver in `WaveformView`.
 - The recording crash with `_swift_task_checkIsolatedSwift` / `dispatch_assert_queue` was caused by creating the AVAudioEngine tap closure inside `@MainActor` `MicrophoneRecorder.start(selectedDeviceID:)`; Swift 6 treated the escaping callback as main-actor isolated even though AVFAudio invoked it on `RealtimeMessenger.mServiceQueue`.
 - The fix moved tap callback creation into a non-main-actor `MicrophoneAudioTap` helper, kept raw audio conversion off the recorder actor, and hopped to `MainActor` only through `MicrophoneRecorder.ingest(samples:level:sessionID:)`.
 - Xcode GUI Archive failed after adding `speech-swift` `0.0.15` because Release package builds compiled `SpeechVAD` sources for x86_64, where `Float16` is unavailable on macOS. Normal Run builds succeeded because they built only the active Apple Silicon architecture.

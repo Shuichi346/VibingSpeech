@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Moved the recording overlay to a compact bottom-centered capsule, removed phase text, and made the waveform respond more visibly to microphone input levels.
 - Created the native macOS Xcode project and app scaffold.
 - Added menu-bar lifecycle, global hotkey service, microphone capture, overlay, pasteboard insertion, local settings, hotwords, and history persistence.
 - Added focused unit coverage for model metadata, word counting, settings persistence, history retention, hotword validation, text processing cleanup, and pasteboard restoration.
