@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Added an Other sidebar settings screen with adjustable idle model unloading and Launch at Login, and wired Text Processing (LLM) to load the Qwen3.5-4B MLX model with non-thinking chat-template behavior and Qwen-recommended sampling values.
+- Fixed a recording-finish crash when Text Processing (LLM) is enabled by converting MLX generation traps into recoverable errors and rejecting unsupported Qwen3.5 DeltaNet layouts before generation.
 - Added source-specific History copy controls for LLM-edited text, transcription text, and original ASR text, with distinct icons and copied-state feedback.
 - Added visible ASR and LLM preparation indicators so model downloads and loading are no longer silent, and fixed the LLM loading indicator so it clears when the text processor becomes ready.
 - Fixed the menu-bar Show Window action so the main window reappears after the user closes it.

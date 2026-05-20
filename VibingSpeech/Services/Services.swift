@@ -10,6 +10,7 @@ import Qwen3ASR
 #endif
 
 #if canImport(Qwen3Chat)
+import MLX
 import Qwen3Chat
 #endif
 
@@ -402,6 +403,8 @@ enum TextProcessingServiceError: LocalizedError {
     case modelUnavailable
     case emptyPrompt
     case emptyResult
+    case incompatibleModelConfig(String)
+    case generationFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -411,6 +414,174 @@ enum TextProcessingServiceError: LocalizedError {
             "A custom text processing prompt is required."
         case .emptyResult:
             "The text processor returned no text."
+        case .incompatibleModelConfig(let reason):
+            "Text processor model files are not compatible: \(reason)"
+        case .generationFailed(let reason):
+            "Text processing failed: \(reason)"
+        }
+    }
+}
+
+enum TextProcessingModelDirectory {
+    static func prepare(from sourceDirectory: URL) throws -> URL {
+        let configURL = sourceDirectory.appendingPathComponent("config.json")
+        let configData = try Data(contentsOf: configURL)
+        let tokenizerURL = sourceDirectory.appendingPathComponent("tokenizer.json")
+        let tokenizerData = try? Data(contentsOf: tokenizerURL)
+
+        guard let normalizedConfigData = try normalizedConfigData(from: configData, tokenizerData: tokenizerData) else {
+            return sourceDirectory
+        }
+
+        let runtimeDirectory = sourceDirectory.appendingPathComponent(".vibingspeech-text-runtime", isDirectory: true)
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: runtimeDirectory, withIntermediateDirectories: true)
+        try normalizedConfigData.write(to: runtimeDirectory.appendingPathComponent("config.json"), options: .atomic)
+
+        for fileName in ["tokenizer.json", "tokenizer_config.json", "vocab.json", "merges.txt"] {
+            let sourceURL = sourceDirectory.appendingPathComponent(fileName)
+            guard fileManager.fileExists(atPath: sourceURL.path) else { continue }
+            try refreshLink(from: sourceURL, to: runtimeDirectory.appendingPathComponent(fileName))
+        }
+
+        let sourceFiles = try fileManager.contentsOfDirectory(at: sourceDirectory, includingPropertiesForKeys: nil)
+        for sourceURL in sourceFiles where sourceURL.pathExtension == "safetensors" {
+            try refreshLink(from: sourceURL, to: runtimeDirectory.appendingPathComponent(sourceURL.lastPathComponent))
+        }
+
+        return runtimeDirectory
+    }
+
+    static func normalizedConfigData(from configData: Data, tokenizerData: Data? = nil) throws -> Data? {
+        guard let root = try JSONSerialization.jsonObject(with: configData) as? [String: Any] else {
+            throw TextProcessingServiceError.incompatibleModelConfig("config.json is not a JSON object")
+        }
+        if root["hidden_size"] != nil {
+            return nil
+        }
+        guard let textConfig = root["text_config"] as? [String: Any] else {
+            throw TextProcessingServiceError.incompatibleModelConfig("config.json has no text_config section")
+        }
+
+        let ropeParameters = textConfig["rope_parameters"] as? [String: Any] ?? [:]
+        var normalized: [String: Any] = [
+            "hidden_size": try requiredInt(textConfig, "hidden_size"),
+            "num_hidden_layers": try requiredInt(textConfig, "num_hidden_layers"),
+            "num_attention_heads": try requiredInt(textConfig, "num_attention_heads"),
+            "num_key_value_heads": try requiredInt(textConfig, "num_key_value_heads"),
+            "head_dim": try requiredInt(textConfig, "head_dim"),
+            "intermediate_size": try requiredInt(textConfig, "intermediate_size"),
+            "vocab_size": try requiredInt(textConfig, "vocab_size"),
+            "max_seq_len": optionalInt(textConfig, "max_seq_len") ?? optionalInt(textConfig, "max_position_embeddings") ?? 2048,
+            "rope_theta": optionalDouble(textConfig, "rope_theta") ?? optionalDouble(ropeParameters, "rope_theta") ?? 10_000_000.0,
+            "rms_norm_eps": try requiredDouble(textConfig, "rms_norm_eps"),
+            "eos_token_id": specialTokenID("<|im_end|>", in: tokenizerData) ?? optionalInt(textConfig, "eos_token_id") ?? 248046,
+            "pad_token_id": specialTokenID("<|endoftext|>", in: tokenizerData) ?? optionalInt(textConfig, "pad_token_id") ?? 248044,
+            "quantization": quantizationName(from: root["quantization"] ?? textConfig["quantization"]),
+            "model_type": "qwen3_5_text"
+        ]
+
+        for key in [
+            "layer_types",
+            "full_attention_interval",
+            "linear_num_key_heads",
+            "linear_key_head_dim",
+            "linear_num_value_heads",
+            "linear_value_head_dim",
+            "linear_conv_kernel_dim",
+            "tie_word_embeddings"
+        ] {
+            if let value = textConfig[key] {
+                normalized[key] = value
+            }
+        }
+        normalized["partial_rotary_factor"] = optionalDouble(textConfig, "partial_rotary_factor")
+            ?? optionalDouble(ropeParameters, "partial_rotary_factor")
+
+        try validateSupportedQwen3ChatConfig(normalized)
+
+        return try JSONSerialization.data(withJSONObject: normalized, options: [.prettyPrinted, .sortedKeys])
+    }
+
+    private static func refreshLink(from sourceURL: URL, to destinationURL: URL) throws {
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+        }
+        do {
+            try fileManager.linkItem(at: sourceURL, to: destinationURL)
+        } catch {
+            try fileManager.createSymbolicLink(at: destinationURL, withDestinationURL: sourceURL)
+        }
+    }
+
+    private static func requiredInt(_ dictionary: [String: Any], _ key: String) throws -> Int {
+        guard let value = optionalInt(dictionary, key) else {
+            throw TextProcessingServiceError.incompatibleModelConfig("config key \(key) is missing")
+        }
+        return value
+    }
+
+    private static func optionalInt(_ dictionary: [String: Any], _ key: String) -> Int? {
+        if let value = dictionary[key] as? Int { return value }
+        if let value = dictionary[key] as? NSNumber { return value.intValue }
+        return nil
+    }
+
+    private static func requiredDouble(_ dictionary: [String: Any], _ key: String) throws -> Double {
+        guard let value = optionalDouble(dictionary, key) else {
+            throw TextProcessingServiceError.incompatibleModelConfig("config key \(key) is missing")
+        }
+        return value
+    }
+
+    private static func optionalDouble(_ dictionary: [String: Any], _ key: String) -> Double? {
+        if let value = dictionary[key] as? Double { return value }
+        if let value = dictionary[key] as? NSNumber { return value.doubleValue }
+        return nil
+    }
+
+    private static func quantizationName(from value: Any?) -> String {
+        if let value = value as? String {
+            return value
+        }
+        guard let dictionary = value as? [String: Any],
+              let bits = optionalInt(dictionary, "bits") else {
+            return "int4"
+        }
+        return "int\(bits)"
+    }
+
+    private static func specialTokenID(_ token: String, in tokenizerData: Data?) -> Int? {
+        guard let tokenizerData,
+              let root = try? JSONSerialization.jsonObject(with: tokenizerData) as? [String: Any],
+              let addedTokens = root["added_tokens"] as? [[String: Any]] else {
+            return nil
+        }
+        return addedTokens.first { $0["content"] as? String == token }?["id"] as? Int
+    }
+
+    private static func validateSupportedQwen3ChatConfig(_ config: [String: Any]) throws {
+        guard (config["model_type"] as? String) == "qwen3_5_text" else { return }
+        guard let layerTypes = config["layer_types"] as? [String],
+              layerTypes.contains("linear_attention") else {
+            return
+        }
+
+        let hiddenSize = try requiredInt(config, "hidden_size")
+        let linearKeyHeads = optionalInt(config, "linear_num_key_heads") ?? 16
+        let linearKeyHeadDim = optionalInt(config, "linear_key_head_dim") ?? 128
+        let linearValueHeads = optionalInt(config, "linear_num_value_heads") ?? linearKeyHeads
+        let linearValueHeadDim = optionalInt(config, "linear_value_head_dim") ?? linearKeyHeadDim
+
+        let supportedDeltaNetLayout = linearKeyHeads == linearValueHeads
+            && linearKeyHeads * linearKeyHeadDim == hiddenSize * 2
+            && linearValueHeads * linearValueHeadDim == hiddenSize * 2
+
+        guard supportedDeltaNetLayout else {
+            throw TextProcessingServiceError.incompatibleModelConfig(
+                "Qwen3Chat currently supports the 0.8B DeltaNet layout; this model uses hidden_size=\(hiddenSize), linear_num_key_heads=\(linearKeyHeads), linear_key_head_dim=\(linearKeyHeadDim), linear_num_value_heads=\(linearValueHeads), linear_value_head_dim=\(linearValueHeadDim)."
+            )
         }
     }
 }
@@ -475,7 +646,8 @@ actor TextProcessingBackend {
                 "vocab.json"
             ]
         )
-        chat = try await Qwen35MLXChat.fromLocal(directory: cacheDirectory)
+        let modelDirectory = try TextProcessingModelDirectory.prepare(from: cacheDirectory)
+        chat = try await Qwen35MLXChat.fromLocal(directory: modelDirectory)
         #else
         throw TextProcessingServiceError.modelUnavailable
         #endif
@@ -498,13 +670,22 @@ actor TextProcessingBackend {
             maxTokens: 512,
             repetitionPenalty: 1.0
         )
-        let output = try chat.generate(
-            messages: [
-                ChatMessage(role: .system, content: systemPrompt),
-                ChatMessage(role: .user, content: text)
-            ],
-            sampling: sampling
-        )
+        let output: String
+        do {
+            output = try MLX.withError { error in
+                let generated = try chat.generate(
+                    messages: [
+                        ChatMessage(role: .system, content: systemPrompt),
+                        ChatMessage(role: .user, content: text)
+                    ],
+                    sampling: sampling
+                )
+                try error.check()
+                return generated
+            }
+        } catch {
+            throw TextProcessingServiceError.generationFailed(error.localizedDescription)
+        }
         let stripped = TextProcessingService.stripThinkingBlocks(from: output)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !stripped.isEmpty else { throw TextProcessingServiceError.emptyResult }
