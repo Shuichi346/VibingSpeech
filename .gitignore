@@ -6,6 +6,7 @@
 /.build
 .swiftpm/
 Package.pins
+build/
 
 # ------ Xcode ------
 *.xcodeproj/
