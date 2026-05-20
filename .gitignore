@@ -1,0 +1,10 @@
+.DS_Store
+Thumbs.db
+build/
+DerivedData/
+*.xcuserdata/
+.swiftpm/
+*.xcworkspace/xcuserdata/
+dist/
+*.xcresult
+
