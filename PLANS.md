@@ -56,7 +56,7 @@ Build VibingSpeech as an Apple-native macOS app that runs entirely on-device:
 - Global hotkey triggers voice capture from any frontmost application.
 - A floating overlay panel shows recording and transcription state.
 - Qwen3-ASR transforms speech into text using MLX on Apple Silicon.
-- Optional local Qwen3.5 text processing can refine the ASR output.
+- Optional local Qwen3 Instruct 2507 text processing can refine the ASR output.
 - Hotwords, transcription history, and user settings are stored locally.
 - The result is pasted into the active application via a synthesized Cmd+V.
 - App Sandbox is intentionally disabled. Code signing is local/ad-hoc for personal use; Developer ID and notarization are out of scope until a valid signing identity exists.
@@ -115,7 +115,7 @@ All dependencies are added through Xcode's Swift Package Dependencies UI. There 
 - `swift-huggingface`: `0.9.0` or a newer compatible release
 - `swift-transformers`: `1.3.0` or a newer compatible release
 
-Linked products on the app target: `Qwen3ASR`, `AudioCommon`, `MLXLLM`, `MLXLMCommon`, `MLXHuggingFace`, `HuggingFace`, `Tokenizers`.
+Linked products on the app target: `Qwen3ASR`, `AudioCommon`, `MLXLLM`, `MLXLMCommon`, `HuggingFace`, `Tokenizers`.
 
 The MLX Metal library (`mlx.metallib`) must be bundled correctly by Xcode's package integration. A manual copy step is not part of the release path. If Xcode integration fails to stage the metallib, introduce a documented workaround inside the Xcode build phases rather than reintroducing a Makefile.
 
@@ -127,7 +127,7 @@ The app uses a service-oriented architecture with narrow ownership. UI state and
 - `HotkeyService`: `CGEventTap` setup, right/left modifier handling, Esc cancellation, tap recovery, Accessibility failure reporting.
 - `MicrophoneRecorder`: per-session `AVAudioEngine`, input device selection, conversion to 16 kHz mono Float32, RMS level metering, serialized start/stop/cancel, session-generation token to discard stale tap callbacks.
 - `ASRService`: Qwen3-ASR model loading, variant switching, transcription execution, detected-language reporting.
-- `TextProcessingService`: optional Qwen3.5 load/unload, preset prompts, custom prompt support, `<think>…</think>` stripping, thinking-disabled generation where supported.
+- `TextProcessingService`: optional Qwen3-4B-Instruct-2507 load/unload through `mlx-swift-lm`, preset prompts, custom prompt support, and Qwen-recommended non-reasoning generation settings.
 - `TextInsertionService`: pasteboard snapshot, simulated Cmd+V via `CGEvent`, safe clipboard restoration.
 - `PermissionService`: microphone and Accessibility permission state, deep links to System Settings.
 - `SoundService`: start/stop/cancel feedback sounds.
@@ -242,11 +242,11 @@ Default: `qwen3_0_6b_8bit`.
 
 Cases: `fixTypos`, `bulletPoints`, `custom`.
 
-Each preset returns a system prompt parameterized by the detected language and the user's selected `LanguageMode`. The Qwen3.5 LLM identifier used by `TextProcessingService` is `mlx-community/Qwen3.5-4B-MLX-4bit`. The on-screen `Model` label in the Home view reflects this value.
+Each preset returns a system prompt parameterized by the detected language and the user's selected `LanguageMode`. The Qwen3 LLM identifier used by `TextProcessingService` is `mlx-community/Qwen3-4B-Instruct-2507-4bit`. The on-screen `Model` label in the Home view reflects this value.
 
 The `custom` preset uses a user-supplied system prompt persisted in `SettingsStore`.
 
-The service always strips any `<think>…</think>` blocks from generated output before returning text.
+The selected Qwen3 Instruct 2507 model is non-reasoning and should be prompted to return only the requested transformed text.
 
 ### 10.3 TranscriptionRecord
 
@@ -330,7 +330,7 @@ Cases: `rightOption`, `leftControl`. Default: `rightOption`.
 
 - Disabled by default. The toggle on Home turns the feature on or off.
 - When turned on:
-  - Begin loading `mlx-community/Qwen3.5-4B-MLX-4bit`.
+  - Begin loading `mlx-community/Qwen3-4B-Instruct-2507-4bit` through `LLMModelFactory.shared.loadContainer`.
   - Show the green "Text processing ready" indicator once loaded.
 - When turned off: unload the model and free memory.
 - Guard against on/off race conditions while loading is in flight using a load-generation token.
@@ -447,5 +447,5 @@ Release and archive checks:
 ## 17. Assumptions and Notes
 
 - The screenshots in `docs/UI_connection.png` are older than this document. Visual details not contradicted here should be reproduced faithfully; contradictions follow this document.
-- The on-screen label `Qwen3-4B-Instruct-2507 (4-bit)` appearing in one Home screenshot is illustrative. The actual model used by `TextProcessingService` is `mlx-community/Qwen3.5-4B-MLX-4bit`. The Home view must display whatever model identifier the service is configured to load, so the label stays accurate over time.
+- The on-screen label `Qwen3-4B-Instruct-2507 (4-bit)` appearing in one Home screenshot matches the current Text Processing model family. The actual model identifier is `mlx-community/Qwen3-4B-Instruct-2507-4bit`, and the Home view must display whatever model identifier the service is configured to load so the label stays accurate over time.
 - If `speech-swift 0.0.15` does not expose the required APIs, fall back to `0.0.9` and append a "Dependency notes" subsection at the end of this file recording the reason, the date, and the specific API mismatch observed.

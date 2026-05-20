@@ -21,7 +21,10 @@
 		10000000000000000000000C /* VibingSpeechUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000C /* VibingSpeechUITests.swift */; };
 		10000000000000000000000D /* Qwen3ASR in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000002 /* Qwen3ASR */; };
 		10000000000000000000000E /* AudioCommon in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000003 /* AudioCommon */; };
-		10000000000000000000000F /* Qwen3Chat in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000004 /* Qwen3Chat */; };
+		100000000000000000000010 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000005 /* MLXLLM */; };
+		100000000000000000000011 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000006 /* MLXLMCommon */; };
+		100000000000000000000012 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000007 /* HuggingFace */; };
+		100000000000000000000013 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000008 /* Tokenizers */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -61,7 +64,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		500000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (10000000000000000000000D /* Qwen3ASR in Frameworks */, 10000000000000000000000E /* AudioCommon in Frameworks */, 10000000000000000000000F /* Qwen3Chat in Frameworks */); runOnlyForDeploymentPostprocessing = 0; };
+		500000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (10000000000000000000000D /* Qwen3ASR in Frameworks */, 10000000000000000000000E /* AudioCommon in Frameworks */, 100000000000000000000010 /* MLXLLM in Frameworks */, 100000000000000000000011 /* MLXLMCommon in Frameworks */, 100000000000000000000012 /* HuggingFace in Frameworks */, 100000000000000000000013 /* Tokenizers in Frameworks */); runOnlyForDeploymentPostprocessing = 0; };
 		500000000000000000000002 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		500000000000000000000003 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
@@ -131,7 +134,10 @@
 			packageProductDependencies = (
 				A00000000000000000000002 /* Qwen3ASR */,
 				A00000000000000000000003 /* AudioCommon */,
-				A00000000000000000000004 /* Qwen3Chat */,
+				A00000000000000000000005 /* MLXLLM */,
+				A00000000000000000000006 /* MLXLMCommon */,
+				A00000000000000000000007 /* HuggingFace */,
+				A00000000000000000000008 /* Tokenizers */,
 			);
 			productName = VibingSpeech;
 			productReference = 20000000000000000000000E /* VibingSpeech.app */;
@@ -196,6 +202,9 @@
 			mainGroup = 600000000000000000000001;
 			packageReferences = (
 				A00000000000000000000001 /* XCRemoteSwiftPackageReference "speech-swift" */,
+				A00000000000000000000009 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				A0000000000000000000000A /* XCRemoteSwiftPackageReference "swift-huggingface" */,
+				A0000000000000000000000B /* XCRemoteSwiftPackageReference "swift-transformers" */,
 			);
 			productRefGroup = 600000000000000000000002 /* Products */;
 			projectDirPath = "";
@@ -481,6 +490,30 @@
 				version = 0.0.15;
 			};
 		};
+		A00000000000000000000009 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
+			requirement = {
+				kind = exactVersion;
+				version = 3.31.3;
+			};
+		};
+		A0000000000000000000000A /* XCRemoteSwiftPackageReference "swift-huggingface" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-huggingface.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.9.0;
+			};
+		};
+		A0000000000000000000000B /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-transformers";
+			requirement = {
+				kind = exactVersion;
+				version = 1.3.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -494,10 +527,25 @@
 			package = A00000000000000000000001 /* XCRemoteSwiftPackageReference "speech-swift" */;
 			productName = AudioCommon;
 		};
-		A00000000000000000000004 /* Qwen3Chat */ = {
+		A00000000000000000000005 /* MLXLLM */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000001 /* XCRemoteSwiftPackageReference "speech-swift" */;
-			productName = Qwen3Chat;
+			package = A00000000000000000000009 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
+		};
+		A00000000000000000000006 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000009 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
+		};
+		A00000000000000000000007 /* HuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A0000000000000000000000A /* XCRemoteSwiftPackageReference "swift-huggingface" */;
+			productName = HuggingFace;
+		};
+		A00000000000000000000008 /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A0000000000000000000000B /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

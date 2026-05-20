@@ -52,7 +52,7 @@ VibingSpeech is a native macOS dictation utility for Apple Silicon Macs. It runs
 - AVFoundation for microphone capture and audio conversion.
 - Carbon and Core Graphics event taps for global hotkeys and simulated paste.
 - `speech-swift` `0.0.15` for Qwen3-ASR and audio support.
-- `mlx-swift` `0.31.3` and Swift package dependencies resolved by Xcode.
+- `mlx-swift-lm` `3.31.3` with `mlx-swift` `0.31.3` for local Qwen3 text processing.
 - JSON files in Application Support for local history and hotword persistence.
 
 ## Requirements

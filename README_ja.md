@@ -52,7 +52,7 @@ VibingSpeech は、Apple Silicon Mac 向けのネイティブ macOS 音声入力
 - マイク入力と音声変換に AVFoundation を使用。
 - グローバルホットキーおよびペースト操作のシミュレーションに Carbon と Core Graphics イベントタップを使用。
 - Qwen3-ASR と音声サポートに `speech-swift` `0.0.15` を使用。
-- `mlx-swift` `0.31.3` および Xcode で解決される Swift パッケージ依存関係。
+- ローカル Qwen3 テキスト処理に `mlx-swift-lm` `3.31.3` と `mlx-swift` `0.31.3` を使用。
 - ローカルの履歴およびホットワード永続化に Application Support 内の JSON ファイルを使用。
 
 ## 動作環境

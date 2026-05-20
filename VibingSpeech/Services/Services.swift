@@ -9,9 +9,11 @@ import AudioCommon
 import Qwen3ASR
 #endif
 
-#if canImport(Qwen3Chat)
-import MLX
-import Qwen3Chat
+#if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
+import HuggingFace
+import MLXLLM
+import MLXLMCommon
+import Tokenizers
 #endif
 
 @MainActor
@@ -403,188 +405,109 @@ enum TextProcessingServiceError: LocalizedError {
     case modelUnavailable
     case emptyPrompt
     case emptyResult
-    case incompatibleModelConfig(String)
     case generationFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .modelUnavailable:
-            "Qwen3.5 text processing is not linked or could not be loaded."
+            "Qwen3 text processing is not linked or could not be loaded."
         case .emptyPrompt:
             "A custom text processing prompt is required."
         case .emptyResult:
             "The text processor returned no text."
-        case .incompatibleModelConfig(let reason):
-            "Text processor model files are not compatible: \(reason)"
         case .generationFailed(let reason):
             "Text processing failed: \(reason)"
         }
     }
 }
 
-enum TextProcessingModelDirectory {
-    static func prepare(from sourceDirectory: URL) throws -> URL {
-        let configURL = sourceDirectory.appendingPathComponent("config.json")
-        let configData = try Data(contentsOf: configURL)
-        let tokenizerURL = sourceDirectory.appendingPathComponent("tokenizer.json")
-        let tokenizerData = try? Data(contentsOf: tokenizerURL)
+#if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
+private enum TextProcessingDownloaderError: LocalizedError {
+    case invalidRepositoryID(String)
 
-        guard let normalizedConfigData = try normalizedConfigData(from: configData, tokenizerData: tokenizerData) else {
-            return sourceDirectory
-        }
-
-        let runtimeDirectory = sourceDirectory.appendingPathComponent(".vibingspeech-text-runtime", isDirectory: true)
-        let fileManager = FileManager.default
-        try fileManager.createDirectory(at: runtimeDirectory, withIntermediateDirectories: true)
-        try normalizedConfigData.write(to: runtimeDirectory.appendingPathComponent("config.json"), options: .atomic)
-
-        for fileName in ["tokenizer.json", "tokenizer_config.json", "vocab.json", "merges.txt"] {
-            let sourceURL = sourceDirectory.appendingPathComponent(fileName)
-            guard fileManager.fileExists(atPath: sourceURL.path) else { continue }
-            try refreshLink(from: sourceURL, to: runtimeDirectory.appendingPathComponent(fileName))
-        }
-
-        let sourceFiles = try fileManager.contentsOfDirectory(at: sourceDirectory, includingPropertiesForKeys: nil)
-        for sourceURL in sourceFiles where sourceURL.pathExtension == "safetensors" {
-            try refreshLink(from: sourceURL, to: runtimeDirectory.appendingPathComponent(sourceURL.lastPathComponent))
-        }
-
-        return runtimeDirectory
-    }
-
-    static func normalizedConfigData(from configData: Data, tokenizerData: Data? = nil) throws -> Data? {
-        guard let root = try JSONSerialization.jsonObject(with: configData) as? [String: Any] else {
-            throw TextProcessingServiceError.incompatibleModelConfig("config.json is not a JSON object")
-        }
-        if root["hidden_size"] != nil {
-            return nil
-        }
-        guard let textConfig = root["text_config"] as? [String: Any] else {
-            throw TextProcessingServiceError.incompatibleModelConfig("config.json has no text_config section")
-        }
-
-        let ropeParameters = textConfig["rope_parameters"] as? [String: Any] ?? [:]
-        var normalized: [String: Any] = [
-            "hidden_size": try requiredInt(textConfig, "hidden_size"),
-            "num_hidden_layers": try requiredInt(textConfig, "num_hidden_layers"),
-            "num_attention_heads": try requiredInt(textConfig, "num_attention_heads"),
-            "num_key_value_heads": try requiredInt(textConfig, "num_key_value_heads"),
-            "head_dim": try requiredInt(textConfig, "head_dim"),
-            "intermediate_size": try requiredInt(textConfig, "intermediate_size"),
-            "vocab_size": try requiredInt(textConfig, "vocab_size"),
-            "max_seq_len": optionalInt(textConfig, "max_seq_len") ?? optionalInt(textConfig, "max_position_embeddings") ?? 2048,
-            "rope_theta": optionalDouble(textConfig, "rope_theta") ?? optionalDouble(ropeParameters, "rope_theta") ?? 10_000_000.0,
-            "rms_norm_eps": try requiredDouble(textConfig, "rms_norm_eps"),
-            "eos_token_id": specialTokenID("<|im_end|>", in: tokenizerData) ?? optionalInt(textConfig, "eos_token_id") ?? 248046,
-            "pad_token_id": specialTokenID("<|endoftext|>", in: tokenizerData) ?? optionalInt(textConfig, "pad_token_id") ?? 248044,
-            "quantization": quantizationName(from: root["quantization"] ?? textConfig["quantization"]),
-            "model_type": "qwen3_5_text"
-        ]
-
-        for key in [
-            "layer_types",
-            "full_attention_interval",
-            "linear_num_key_heads",
-            "linear_key_head_dim",
-            "linear_num_value_heads",
-            "linear_value_head_dim",
-            "linear_conv_kernel_dim",
-            "tie_word_embeddings"
-        ] {
-            if let value = textConfig[key] {
-                normalized[key] = value
-            }
-        }
-        normalized["partial_rotary_factor"] = optionalDouble(textConfig, "partial_rotary_factor")
-            ?? optionalDouble(ropeParameters, "partial_rotary_factor")
-
-        try validateSupportedQwen3ChatConfig(normalized)
-
-        return try JSONSerialization.data(withJSONObject: normalized, options: [.prettyPrinted, .sortedKeys])
-    }
-
-    private static func refreshLink(from sourceURL: URL, to destinationURL: URL) throws {
-        let fileManager = FileManager.default
-        if fileManager.fileExists(atPath: destinationURL.path) {
-            try fileManager.removeItem(at: destinationURL)
-        }
-        do {
-            try fileManager.linkItem(at: sourceURL, to: destinationURL)
-        } catch {
-            try fileManager.createSymbolicLink(at: destinationURL, withDestinationURL: sourceURL)
-        }
-    }
-
-    private static func requiredInt(_ dictionary: [String: Any], _ key: String) throws -> Int {
-        guard let value = optionalInt(dictionary, key) else {
-            throw TextProcessingServiceError.incompatibleModelConfig("config key \(key) is missing")
-        }
-        return value
-    }
-
-    private static func optionalInt(_ dictionary: [String: Any], _ key: String) -> Int? {
-        if let value = dictionary[key] as? Int { return value }
-        if let value = dictionary[key] as? NSNumber { return value.intValue }
-        return nil
-    }
-
-    private static func requiredDouble(_ dictionary: [String: Any], _ key: String) throws -> Double {
-        guard let value = optionalDouble(dictionary, key) else {
-            throw TextProcessingServiceError.incompatibleModelConfig("config key \(key) is missing")
-        }
-        return value
-    }
-
-    private static func optionalDouble(_ dictionary: [String: Any], _ key: String) -> Double? {
-        if let value = dictionary[key] as? Double { return value }
-        if let value = dictionary[key] as? NSNumber { return value.doubleValue }
-        return nil
-    }
-
-    private static func quantizationName(from value: Any?) -> String {
-        if let value = value as? String {
-            return value
-        }
-        guard let dictionary = value as? [String: Any],
-              let bits = optionalInt(dictionary, "bits") else {
-            return "int4"
-        }
-        return "int\(bits)"
-    }
-
-    private static func specialTokenID(_ token: String, in tokenizerData: Data?) -> Int? {
-        guard let tokenizerData,
-              let root = try? JSONSerialization.jsonObject(with: tokenizerData) as? [String: Any],
-              let addedTokens = root["added_tokens"] as? [[String: Any]] else {
-            return nil
-        }
-        return addedTokens.first { $0["content"] as? String == token }?["id"] as? Int
-    }
-
-    private static func validateSupportedQwen3ChatConfig(_ config: [String: Any]) throws {
-        guard (config["model_type"] as? String) == "qwen3_5_text" else { return }
-        guard let layerTypes = config["layer_types"] as? [String],
-              layerTypes.contains("linear_attention") else {
-            return
-        }
-
-        let hiddenSize = try requiredInt(config, "hidden_size")
-        let linearKeyHeads = optionalInt(config, "linear_num_key_heads") ?? 16
-        let linearKeyHeadDim = optionalInt(config, "linear_key_head_dim") ?? 128
-        let linearValueHeads = optionalInt(config, "linear_num_value_heads") ?? linearKeyHeads
-        let linearValueHeadDim = optionalInt(config, "linear_value_head_dim") ?? linearKeyHeadDim
-
-        let supportedDeltaNetLayout = linearKeyHeads == linearValueHeads
-            && linearKeyHeads * linearKeyHeadDim == hiddenSize * 2
-            && linearValueHeads * linearValueHeadDim == hiddenSize * 2
-
-        guard supportedDeltaNetLayout else {
-            throw TextProcessingServiceError.incompatibleModelConfig(
-                "Qwen3Chat currently supports the 0.8B DeltaNet layout; this model uses hidden_size=\(hiddenSize), linear_num_key_heads=\(linearKeyHeads), linear_key_head_dim=\(linearKeyHeadDim), linear_num_value_heads=\(linearValueHeads), linear_value_head_dim=\(linearValueHeadDim)."
-            )
+    var errorDescription: String? {
+        switch self {
+        case .invalidRepositoryID(let id):
+            "Invalid Hugging Face repository ID: '\(id)'. Expected format 'namespace/name'."
         }
     }
 }
+
+private struct TextProcessingHubDownloader: MLXLMCommon.Downloader {
+    private let hubClient = HuggingFace.HubClient()
+
+    func download(
+        id: String,
+        revision: String?,
+        matching patterns: [String],
+        useLatest: Bool,
+        progressHandler: @Sendable @escaping (Progress) -> Void
+    ) async throws -> URL {
+        guard let repoID = HuggingFace.Repo.ID(rawValue: id) else {
+            throw TextProcessingDownloaderError.invalidRepositoryID(id)
+        }
+        return try await hubClient.downloadSnapshot(
+            of: repoID,
+            revision: revision ?? "main",
+            matching: patterns,
+            progressHandler: { @MainActor progress in
+                progressHandler(progress)
+            }
+        )
+    }
+}
+
+private struct TextProcessingTokenizerLoader: MLXLMCommon.TokenizerLoader {
+    func load(from directory: URL) async throws -> any MLXLMCommon.Tokenizer {
+        let tokenizer = try await Tokenizers.AutoTokenizer.from(modelFolder: directory)
+        return TextProcessingTokenizer(tokenizer)
+    }
+}
+
+private struct TextProcessingTokenizer: MLXLMCommon.Tokenizer {
+    private let tokenizer: any Tokenizers.Tokenizer
+
+    init(_ tokenizer: any Tokenizers.Tokenizer) {
+        self.tokenizer = tokenizer
+    }
+
+    func encode(text: String, addSpecialTokens: Bool) -> [Int] {
+        tokenizer.encode(text: text, addSpecialTokens: addSpecialTokens)
+    }
+
+    func decode(tokenIds: [Int], skipSpecialTokens: Bool) -> String {
+        tokenizer.decode(tokens: tokenIds, skipSpecialTokens: skipSpecialTokens)
+    }
+
+    func convertTokenToId(_ token: String) -> Int? {
+        tokenizer.convertTokenToId(token)
+    }
+
+    func convertIdToToken(_ id: Int) -> String? {
+        tokenizer.convertIdToToken(id)
+    }
+
+    var bosToken: String? { tokenizer.bosToken }
+    var eosToken: String? { tokenizer.eosToken }
+    var unknownToken: String? { tokenizer.unknownToken }
+
+    func applyChatTemplate(
+        messages: [[String: any Sendable]],
+        tools: [[String: any Sendable]]?,
+        additionalContext: [String: any Sendable]?
+    ) throws -> [Int] {
+        do {
+            return try tokenizer.applyChatTemplate(
+                messages: messages,
+                tools: tools,
+                additionalContext: additionalContext
+            )
+        } catch Tokenizers.TokenizerError.missingChatTemplate {
+            throw MLXLMCommon.TokenizerError.missingChatTemplate
+        }
+    }
+}
+#endif
 
 actor ASRService {
     private(set) var loadedVariant: ASRModelVariant?
@@ -628,68 +551,54 @@ actor ASRService {
 }
 
 actor TextProcessingBackend {
-    #if canImport(Qwen3Chat)
-    private var chat: Qwen35MLXChat?
+    #if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
+    private var modelContainer: ModelContainer?
     #endif
 
     func load() async throws {
-        #if canImport(Qwen3Chat)
-        if chat?.isLoaded == true { return }
-        let cacheDirectory = try HuggingFaceDownloader.getCacheDirectory(for: TextProcessingService.modelIdentifier)
-        try await HuggingFaceDownloader.downloadWeights(
-            modelId: TextProcessingService.modelIdentifier,
-            to: cacheDirectory,
-            additionalFiles: [
-                "chat_template.jinja",
-                "tokenizer.json",
-                "tokenizer_config.json",
-                "vocab.json"
-            ]
+        #if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
+        if modelContainer != nil { return }
+        let configuration = ModelConfiguration(id: TextProcessingService.modelIdentifier)
+        modelContainer = try await LLMModelFactory.shared.loadContainer(
+            from: TextProcessingHubDownloader(),
+            using: TextProcessingTokenizerLoader(),
+            configuration: configuration
         )
-        let modelDirectory = try TextProcessingModelDirectory.prepare(from: cacheDirectory)
-        chat = try await Qwen35MLXChat.fromLocal(directory: modelDirectory)
         #else
         throw TextProcessingServiceError.modelUnavailable
         #endif
     }
 
     func unload() {
-        #if canImport(Qwen3Chat)
-        chat?.unload()
-        chat = nil
+        #if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
+        modelContainer = nil
         #endif
     }
 
     func process(_ text: String, systemPrompt: String) async throws -> String {
-        #if canImport(Qwen3Chat)
-        guard let chat, chat.isLoaded else { throw TextProcessingServiceError.modelUnavailable }
-        let sampling = ChatSamplingConfig(
+        #if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
+        guard let modelContainer else { throw TextProcessingServiceError.modelUnavailable }
+        let parameters = GenerateParameters(
+            maxTokens: TextProcessingService.maxOutputTokens,
             temperature: 0.7,
-            topK: 20,
             topP: 0.8,
-            maxTokens: 512,
-            repetitionPenalty: 1.0
+            topK: 20,
+            minP: 0
         )
         let output: String
         do {
-            output = try MLX.withError { error in
-                let generated = try chat.generate(
-                    messages: [
-                        ChatMessage(role: .system, content: systemPrompt),
-                        ChatMessage(role: .user, content: text)
-                    ],
-                    sampling: sampling
-                )
-                try error.check()
-                return generated
-            }
+            let session = ChatSession(
+                modelContainer,
+                instructions: systemPrompt,
+                generateParameters: parameters
+            )
+            output = try await session.respond(to: text)
         } catch {
             throw TextProcessingServiceError.generationFailed(error.localizedDescription)
         }
-        let stripped = TextProcessingService.stripThinkingBlocks(from: output)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !stripped.isEmpty else { throw TextProcessingServiceError.emptyResult }
-        return stripped
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw TextProcessingServiceError.emptyResult }
+        return trimmed
         #else
         throw TextProcessingServiceError.modelUnavailable
         #endif
@@ -743,7 +652,8 @@ final class LaunchAtLoginService: ObservableObject {
 
 @MainActor
 final class TextProcessingService: ObservableObject {
-    nonisolated static let modelIdentifier = "mlx-community/Qwen3.5-4B-MLX-4bit"
+    nonisolated static let modelIdentifier = "mlx-community/Qwen3-4B-Instruct-2507-4bit"
+    nonisolated static let maxOutputTokens = 16_384
 
     @Published private(set) var isReady = false
     @Published private(set) var isLoading = false
@@ -818,15 +728,6 @@ final class TextProcessingService: ObservableObject {
             onStateChange?()
             throw error
         }
-    }
-
-    nonisolated static func stripThinkingBlocks(from text: String) -> String {
-        var result = text
-        while let start = result.range(of: "<think>", options: [.caseInsensitive]),
-              let end = result.range(of: "</think>", options: [.caseInsensitive], range: start.upperBound..<result.endIndex) {
-            result.removeSubrange(start.lowerBound..<end.upperBound)
-        }
-        return result
     }
 }
 

@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Added an Other sidebar settings screen with adjustable idle model unloading and Launch at Login, and wired Text Processing (LLM) to load the Qwen3.5-4B MLX model with non-thinking chat-template behavior and Qwen-recommended sampling values.
-- Fixed a recording-finish crash when Text Processing (LLM) is enabled by converting MLX generation traps into recoverable errors and rejecting unsupported Qwen3.5 DeltaNet layouts before generation.
+- Added an Other sidebar settings screen with adjustable idle model unloading and Launch at Login, and wired Text Processing (LLM) to load `mlx-community/Qwen3-4B-Instruct-2507-4bit` through `mlx-swift-lm`.
+- Fixed a Text Processing (LLM) model compatibility error by removing the incorrect Qwen3Chat/Qwen3.5 path and using Qwen3 Instruct 2507 with its recommended sampling settings.
 - Added source-specific History copy controls for LLM-edited text, transcription text, and original ASR text, with distinct icons and copied-state feedback.
 - Added visible ASR and LLM preparation indicators so model downloads and loading are no longer silent, and fixed the LLM loading indicator so it clears when the text processor becomes ready.
 - Fixed the menu-bar Show Window action so the main window reappears after the user closes it.
@@ -18,4 +18,5 @@
 ### Dependency notes
 
 - 2026-05-20: `speech-swift` `0.0.15` is used for the Qwen3ASR and AudioCommon products. Hotwords are persisted locally, but the public `Qwen3ASRModel.transcribe` examples do not document a prompt-bias or hotword context parameter, so the app does not claim active ASR biasing until that API is confirmed.
+- 2026-05-20: Text Processing uses `mlx-swift-lm` `3.31.3`, `swift-huggingface` `0.9.0`, and `swift-transformers` `1.3.0` to load `mlx-community/Qwen3-4B-Instruct-2507-4bit`.
 - 2026-05-20: Xcode GUI Archive can compile `speech-swift` for x86_64 under Release package settings, which fails on `Float16` usage in `SpeechVAD`. Use `script/archive.sh` or the equivalent `xcodebuild archive` command with `ARCHS=arm64` instead.
