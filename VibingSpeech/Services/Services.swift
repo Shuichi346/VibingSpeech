@@ -211,6 +211,32 @@ enum MicrophoneRecorderError: LocalizedError {
     }
 }
 
+private final class MicrophoneAudioTap {
+    private weak var recorder: MicrophoneRecorder?
+    private let inputSampleRate: Double
+    private let sessionID: UUID
+
+    init(recorder: MicrophoneRecorder, inputSampleRate: Double, sessionID: UUID) {
+        self.recorder = recorder
+        self.inputSampleRate = inputSampleRate
+        self.sessionID = sessionID
+    }
+
+    func makeBlock() -> AVAudioNodeTapBlock {
+        { [weak self] buffer, _ in
+            self?.process(buffer)
+        }
+    }
+
+    private func process(_ buffer: AVAudioPCMBuffer) {
+        let newSamples = MicrophoneRecorder.downmixedAndResampledSamples(from: buffer, inputSampleRate: inputSampleRate)
+        let level = MicrophoneRecorder.rmsLevel(for: newSamples)
+        Task { @MainActor [weak recorder, sessionID] in
+            recorder?.ingest(samples: newSamples, level: level, sessionID: sessionID)
+        }
+    }
+}
+
 @MainActor
 final class MicrophoneRecorder: ObservableObject {
     nonisolated static let minimumSamplesForASR = 800
@@ -224,6 +250,7 @@ final class MicrophoneRecorder: ObservableObject {
     private var sessionID = UUID()
     private var startTime: Date?
     private var inputTapInstalled = false
+    private var audioTap: MicrophoneAudioTap?
 
     func availableInputDevices() -> [MicrophoneDevice] {
         let discovery = AVCaptureDevice.DiscoverySession(
@@ -246,18 +273,14 @@ final class MicrophoneRecorder: ObservableObject {
         startTime = Date()
         let activeSessionID = sessionID
         self.engine = engine
+        let audioTap = MicrophoneAudioTap(
+            recorder: self,
+            inputSampleRate: inputFormat.sampleRate,
+            sessionID: activeSessionID
+        )
+        self.audioTap = audioTap
 
-        input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
-            guard let self else { return }
-            let newSamples = Self.downmixedAndResampledSamples(from: buffer, inputSampleRate: inputFormat.sampleRate)
-            let level = Self.rmsLevel(for: newSamples)
-            Task { @MainActor in
-                guard self.sessionID == activeSessionID else { return }
-                self.samples.append(contentsOf: newSamples)
-                self.rmsLevel = level
-                self.onRMSLevel?(level)
-            }
-        }
+        input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat, block: audioTap.makeBlock())
         inputTapInstalled = true
         engine.prepare()
         do {
@@ -266,6 +289,7 @@ final class MicrophoneRecorder: ObservableObject {
             removeInputTapIfNeeded()
             engine.stop()
             self.engine = nil
+            self.audioTap = nil
             startTime = nil
             throw error
         }
@@ -276,9 +300,11 @@ final class MicrophoneRecorder: ObservableObject {
         removeInputTapIfNeeded()
         engine?.stop()
         engine = nil
+        audioTap = nil
         startTime = nil
         let captured = samples
         samples = []
+        sessionID = UUID()
         rmsLevel = 0
         onRMSLevel?(0)
         return (captured, duration)
@@ -288,6 +314,7 @@ final class MicrophoneRecorder: ObservableObject {
         removeInputTapIfNeeded()
         engine?.stop()
         engine = nil
+        audioTap = nil
         samples = []
         startTime = nil
         sessionID = UUID()
@@ -301,7 +328,14 @@ final class MicrophoneRecorder: ObservableObject {
         inputTapInstalled = false
     }
 
-    nonisolated private static func downmixedAndResampledSamples(from buffer: AVAudioPCMBuffer, inputSampleRate: Double) -> [Float] {
+    fileprivate func ingest(samples newSamples: [Float], level: Double, sessionID: UUID) {
+        guard self.sessionID == sessionID else { return }
+        samples.append(contentsOf: newSamples)
+        rmsLevel = level
+        onRMSLevel?(level)
+    }
+
+    nonisolated fileprivate static func downmixedAndResampledSamples(from buffer: AVAudioPCMBuffer, inputSampleRate: Double) -> [Float] {
         guard let channels = buffer.floatChannelData else { return [] }
         let frameCount = Int(buffer.frameLength)
         let channelCount = max(1, Int(buffer.format.channelCount))
@@ -329,7 +363,7 @@ final class MicrophoneRecorder: ObservableObject {
         return output
     }
 
-    nonisolated private static func rmsLevel(for samples: [Float]) -> Double {
+    nonisolated fileprivate static func rmsLevel(for samples: [Float]) -> Double {
         let count = samples.count
         guard count > 0 else { return 0 }
         let meanSquare = samples.reduce(0.0) { partial, value in

@@ -6,6 +6,7 @@
 - Added menu-bar lifecycle, global hotkey service, microphone capture, overlay, pasteboard insertion, local settings, hotwords, and history persistence.
 - Added focused unit coverage for model metadata, word counting, settings persistence, history retention, hotword validation, text processing cleanup, and pasteboard restoration.
 - Documented the `speech-swift` `Float16` Xcode GUI Archive failure and added an arm64-only command-line archive workflow for Apple Silicon builds.
+- Fixed a Swift concurrency crash when microphone tap callbacks from AVAudioEngine ran on AVFAudio's realtime queue during recording.
 
 ### Dependency notes
 

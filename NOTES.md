@@ -2,6 +2,8 @@
 
 ## 2026-05-20
 
+- The recording crash with `_swift_task_checkIsolatedSwift` / `dispatch_assert_queue` was caused by creating the AVAudioEngine tap closure inside `@MainActor` `MicrophoneRecorder.start(selectedDeviceID:)`; Swift 6 treated the escaping callback as main-actor isolated even though AVFAudio invoked it on `RealtimeMessenger.mServiceQueue`.
+- The fix moved tap callback creation into a non-main-actor `MicrophoneAudioTap` helper, kept raw audio conversion off the recorder actor, and hopped to `MainActor` only through `MicrophoneRecorder.ingest(samples:level:sessionID:)`.
 - Xcode GUI Archive failed after adding `speech-swift` `0.0.15` because Release package builds compiled `SpeechVAD` sources for x86_64, where `Float16` is unavailable on macOS. Normal Run builds succeeded because they built only the active Apple Silicon architecture.
 - The failing package files were `Sources/SpeechVAD/CoreMLSileroInference.swift` and `Sources/SpeechVAD/CoreMLWeSpeakerInference.swift`, with errors such as `'Float16' is unavailable in macOS`, initializer mismatch errors, and `Float16` subscript assignment failures.
 - App-side `EXCLUDED_ARCHS = x86_64`, `ONLY_ACTIVE_ARCH = YES` for Release, deployment target changes, package updates, and clearing DerivedData did not resolve the GUI Archive failure because Xcode package Release builds are not controlled by the app target's excluded-architecture settings.
