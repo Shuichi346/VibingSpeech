@@ -13,15 +13,34 @@ final class CoreTests: XCTestCase {
 
     func testPromptGenerationUsesSelectedLanguage() {
         let prompt = TextProcessingPreset.fixTypos.systemPrompt(detectedLanguage: "ja", selectedLanguage: .english)
-        XCTAssertTrue(prompt.contains("English"))
-        XCTAssertTrue(prompt.contains("Fix recognition mistakes"))
+        XCTAssertTrue(prompt.contains("Write the output in English."))
+        XCTAssertFalse(prompt.contains("Write the output in Japanese."))
+        XCTAssertTrue(prompt.contains("Fix misrecognized words"))
+    }
+
+    func testPromptGenerationUsesDetectedLanguageOnlyForAuto() {
+        let prompt = TextProcessingPreset.bulletPoints.systemPrompt(detectedLanguage: "language ja", selectedLanguage: .auto)
+        XCTAssertTrue(prompt.contains("Write the output in Japanese."))
+    }
+
+    func testPromptGenerationFallsBackWhenAutoDetectionIsUnavailable() {
+        let prompt = TextProcessingPreset.fixTypos.systemPrompt(detectedLanguage: nil, selectedLanguage: .auto)
+        XCTAssertTrue(prompt.contains("Use the same language as the input transcription."))
     }
 
     func testLanguageNormalization() {
         XCTAssertEqual(LanguageMode.normalized("en"), .english)
         XCTAssertEqual(LanguageMode.normalized("ja"), .japanese)
         XCTAssertEqual(LanguageMode.normalized("zh"), .chinese)
+        XCTAssertEqual(LanguageMode.normalized("language ja"), .japanese)
         XCTAssertEqual(LanguageMode.normalized("unknown"), .auto)
+    }
+
+    func testASRLanguageHints() {
+        XCTAssertNil(LanguageMode.auto.asrLanguageHint)
+        XCTAssertEqual(LanguageMode.english.asrLanguageHint, "en")
+        XCTAssertEqual(LanguageMode.japanese.asrLanguageHint, "ja")
+        XCTAssertEqual(LanguageMode.chinese.asrLanguageHint, "zh")
     }
 
     func testWordCountingWhitespaceAndCJK() {

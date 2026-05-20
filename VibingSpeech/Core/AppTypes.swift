@@ -58,18 +58,18 @@ enum TextProcessingPreset: String, CaseIterable, Codable, Identifiable {
     }
 
     func systemPrompt(detectedLanguage: String?, selectedLanguage: LanguageMode, customPrompt: String = "") -> String {
-        let language = selectedLanguage.promptLanguageName(detectedLanguage: detectedLanguage)
+        let languageInstruction = selectedLanguage.promptLanguageInstruction(detectedLanguage: detectedLanguage)
         switch self {
         case .fixTypos:
             return """
-                You are a speech-to-text correction assistant. \(language)
+                You are a speech-to-text correction assistant. \(languageInstruction)
                 The input is auto-transcribed from speech. Fix misrecognized words, spelling errors, grammar mistakes, and incorrect word boundaries.
                 Keep the original meaning and tone. Do not add or remove content.
                 Output only the corrected text with no explanation or prefix.
             """
         case .bulletPoints:
             return """
-            	You are a text formatting assistant. \(language)
+                You are a text formatting assistant. \(languageInstruction)
                 The input is auto-transcribed from speech. Fix any errors while reformatting.
                 Convert the text into:
                 - Line 1: A concise title summarizing the subject.
@@ -161,11 +161,15 @@ enum LanguageMode: String, CaseIterable, Codable, Identifiable {
     }
 
     static func normalized(_ value: String?) -> LanguageMode {
-        switch value?.lowercased() {
-        case "en", "eng", "english": .english
-        case "ja", "jp", "japanese": .japanese
-        case "zh", "zho", "chi", "chinese", "cn": .chinese
-        default: .auto
+        let normalizedValue = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "language ", with: "")
+        return switch normalizedValue {
+        case "en", "eng", "english": LanguageMode.english
+        case "ja", "jp", "japanese": LanguageMode.japanese
+        case "zh", "zho", "chi", "chinese", "cn": LanguageMode.chinese
+        default: LanguageMode.auto
         }
     }
 
@@ -175,6 +179,19 @@ enum LanguageMode: String, CaseIterable, Codable, Identifiable {
             return LanguageMode.normalized(detectedLanguage).displayName
         case .english, .japanese, .chinese:
             return displayName
+        }
+    }
+
+    func promptLanguageInstruction(detectedLanguage: String?) -> String {
+        switch self {
+        case .auto:
+            let detected = LanguageMode.normalized(detectedLanguage)
+            guard detected != .auto else {
+                return "Use the same language as the input transcription."
+            }
+            return "Write the output in \(detected.displayName)."
+        case .english, .japanese, .chinese:
+            return "Write the output in \(displayName)."
         }
     }
 }
@@ -250,4 +267,3 @@ enum WordCounter {
         }
     }
 }
-

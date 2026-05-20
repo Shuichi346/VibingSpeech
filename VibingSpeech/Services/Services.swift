@@ -4,6 +4,7 @@ import Carbon
 import Foundation
 
 #if canImport(Qwen3ASR)
+import AudioCommon
 import Qwen3ASR
 #endif
 
@@ -414,10 +415,12 @@ actor ASRService {
         guard samples.count >= MicrophoneRecorder.minimumSamplesForASR else { throw ASRServiceError.shortAudio }
         #if canImport(Qwen3ASR)
         guard let model else { throw ASRServiceError.modelUnavailable }
-        let text = model.transcribe(audio: samples, sampleRate: 16_000)
+        let languageHint = languageMode.asrLanguageHint
+        let transcription = model.transcribeWithLanguage(audio: samples, sampleRate: 16_000, language: languageHint)
+        let text = transcription.text
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw ASRServiceError.emptyResult }
-        return ASRResult(text: text, detectedLanguage: languageMode.asrLanguageHint)
+        return ASRResult(text: text, detectedLanguage: languageHint ?? transcription.language)
         #else
         throw ASRServiceError.modelUnavailable
         #endif
