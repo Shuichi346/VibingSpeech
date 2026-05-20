@@ -2,6 +2,7 @@ import AppKit
 @preconcurrency import AVFoundation
 import Carbon
 import Foundation
+import ServiceManagement
 
 #if canImport(Qwen3ASR)
 import AudioCommon
@@ -411,6 +412,13 @@ actor ASRService {
         #endif
     }
 
+    func unload() {
+        #if canImport(Qwen3ASR)
+        model = nil
+        #endif
+        loadedVariant = nil
+    }
+
     func transcribe(samples: [Float], languageMode: LanguageMode) async throws -> ASRResult {
         guard samples.count >= MicrophoneRecorder.minimumSamplesForASR else { throw ASRServiceError.shortAudio }
         #if canImport(Qwen3ASR)
@@ -424,6 +432,51 @@ actor ASRService {
         #else
         throw ASRServiceError.modelUnavailable
         #endif
+    }
+}
+
+@MainActor
+final class LaunchAtLoginService: ObservableObject {
+    @Published private(set) var isEnabled = false
+    @Published private(set) var statusMessage = ""
+    @Published private(set) var lastError: String?
+
+    init() {
+        refresh()
+    }
+
+    func refresh() {
+        switch SMAppService.mainApp.status {
+        case .enabled:
+            isEnabled = true
+            statusMessage = "VibingSpeech will open when you log in."
+        case .requiresApproval:
+            isEnabled = false
+            statusMessage = "Enable VibingSpeech in System Settings > General > Login Items."
+        case .notRegistered:
+            isEnabled = false
+            statusMessage = "VibingSpeech will not open automatically."
+        case .notFound:
+            isEnabled = false
+            statusMessage = "Login item registration is unavailable for this app bundle."
+        @unknown default:
+            isEnabled = false
+            statusMessage = "Login item status is unavailable."
+        }
+    }
+
+    func setEnabled(_ enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            lastError = nil
+        } catch {
+            lastError = error.localizedDescription
+        }
+        refresh()
     }
 }
 

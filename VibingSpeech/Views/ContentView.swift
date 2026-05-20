@@ -50,6 +50,8 @@ struct ContentView: View {
             HotwordsView(repository: coordinator.hotwords)
         case .history:
             HistoryView(coordinator: coordinator, repository: coordinator.history, settings: settings)
+        case .other:
+            OtherView(coordinator: coordinator, settings: settings, launchAtLogin: coordinator.launchAtLogin)
         }
     }
 }
@@ -828,6 +830,75 @@ private struct HistoryRow: View {
                     copiedKind = nil
                 }
             }
+        }
+    }
+}
+
+private struct OtherView: View {
+    @ObservedObject var coordinator: AppCoordinator
+    @ObservedObject var settings: SettingsStore
+    @ObservedObject var launchAtLogin: LaunchAtLoginService
+
+    private var modelUnloadDelayBinding: Binding<Int> {
+        Binding(
+            get: { settings.modelUnloadDelayMinutes },
+            set: { coordinator.setModelUnloadDelayMinutes($0) }
+        )
+    }
+
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { launchAtLogin.isEnabled },
+            set: { coordinator.setLaunchAtLoginEnabled($0) }
+        )
+    }
+
+    private var modelUnloadDelayLabel: String {
+        settings.modelUnloadDelayMinutes == 0 ? "Off" : "\(settings.modelUnloadDelayMinutes) min"
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Other")
+                    .font(.headline)
+                    .padding(.top, 18)
+
+                SettingsSection {
+                    SettingsRow("Model Auto-Unload") {
+                        HStack(spacing: 8) {
+                            Text(modelUnloadDelayLabel)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 48, alignment: .trailing)
+                            Stepper("", value: modelUnloadDelayBinding, in: 0...SettingsStore.maximumModelUnloadDelayMinutes)
+                                .labelsHidden()
+                        }
+                    } footer: {
+                        Text("Unload the ASR model after this many idle minutes with no recording or transcription. Off keeps the model loaded.")
+                    }
+
+                    Divider()
+
+                    SettingsRow("Launch at Login") {
+                        Toggle("", isOn: launchAtLoginBinding)
+                            .toggleStyle(.switch)
+                    } footer: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(launchAtLogin.statusMessage)
+                            if let error = launchAtLogin.lastError {
+                                Text(error)
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 24)
+            .frame(maxWidth: 660, alignment: .leading)
         }
     }
 }

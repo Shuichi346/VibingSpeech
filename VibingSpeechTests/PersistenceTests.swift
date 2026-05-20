@@ -13,13 +13,23 @@ final class PersistenceTests: XCTestCase {
         let store = SettingsStore(defaults: defaults)
         XCTAssertEqual(store.recordingHotkey, .rightOption)
         XCTAssertEqual(store.languageMode, .auto)
+        XCTAssertEqual(store.modelUnloadDelayMinutes, 5)
 
         store.recordingHotkey = .leftControl
         store.languageMode = .japanese
+        store.modelUnloadDelayMinutes = 17
 
         let reloaded = SettingsStore(defaults: defaults)
         XCTAssertEqual(reloaded.recordingHotkey, .leftControl)
         XCTAssertEqual(reloaded.languageMode, .japanese)
+        XCTAssertEqual(reloaded.modelUnloadDelayMinutes, 17)
+    }
+
+    func testModelUnloadDelayBounds() {
+        XCTAssertEqual(SettingsStore.clampedModelUnloadDelayMinutes(-1), 0)
+        XCTAssertEqual(SettingsStore.clampedModelUnloadDelayMinutes(0), 0)
+        XCTAssertEqual(SettingsStore.clampedModelUnloadDelayMinutes(60), 60)
+        XCTAssertEqual(SettingsStore.clampedModelUnloadDelayMinutes(61), 60)
     }
 
     func testHistoryNeverRetentionWritesNoRecords() throws {

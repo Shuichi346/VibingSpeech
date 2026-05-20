@@ -45,6 +45,7 @@ final class AppCoordinator: ObservableObject {
     @Published var hotwords = HotwordRepository()
     @Published var permissions = PermissionService()
     @Published var textProcessing = TextProcessingService()
+    @Published var launchAtLogin = LaunchAtLoginService()
     @Published var phase: RecordingPhase = .idle
     @Published var asrModelLoaded = false
     @Published var asrModelIsLoading = false
@@ -63,6 +64,7 @@ final class AppCoordinator: ObservableObject {
     private var overlayController: RecordingOverlayController?
     private var startupStarted = false
     private var asrLoadGeneration = UUID()
+    private var modelUnloadTask: Task<Void, Never>?
 
     var preferredColorScheme: ColorScheme? {
         switch settings.appearanceMode {
@@ -102,6 +104,7 @@ final class AppCoordinator: ObservableObject {
             self?.overlayState.rmsLevel = level
         }
         availableMicrophones = microphoneRecorder.availableInputDevices()
+        launchAtLogin.refresh()
 
         permissions.refresh()
         await permissions.requestMicrophoneIfNeeded()
@@ -140,6 +143,7 @@ final class AppCoordinator: ObservableObject {
 
     func loadASRModel() async {
         guard phase == .idle else { return }
+        cancelModelUnloadTimer()
         let variant = settings.asrModelVariant
         let generation = UUID()
         asrLoadGeneration = generation
@@ -153,6 +157,7 @@ final class AppCoordinator: ObservableObject {
             asrModelIsLoading = false
             asrStatusMessage = "Ready to record"
             lastError = nil
+            scheduleModelUnloadIfNeeded()
         } catch {
             guard asrLoadGeneration == generation else { return }
             asrModelLoaded = false
@@ -164,9 +169,15 @@ final class AppCoordinator: ObservableObject {
 
     func beginRecording() async {
         guard phase == .idle else { return }
+        cancelModelUnloadTimer()
         guard permissions.microphoneGranted else {
             lastError = "Microphone permission is required."
+            scheduleModelUnloadIfNeeded()
             return
+        }
+        if !asrModelLoaded {
+            await loadASRModel()
+            cancelModelUnloadTimer()
         }
         guard asrModelLoaded else {
             lastError = asrStatusMessage
@@ -183,6 +194,7 @@ final class AppCoordinator: ObservableObject {
             }
         } catch {
             lastError = error.localizedDescription
+            scheduleModelUnloadIfNeeded()
         }
     }
 
@@ -198,6 +210,7 @@ final class AppCoordinator: ObservableObject {
             overlayState.phase = .idle
             overlayController?.hide()
             lastError = nil
+            scheduleModelUnloadIfNeeded()
             return
         }
 
@@ -243,6 +256,7 @@ final class AppCoordinator: ObservableObject {
         phase = .idle
         overlayState.phase = .idle
         overlayController?.hide()
+        scheduleModelUnloadIfNeeded()
     }
 
     func cancelRecording() async {
@@ -254,11 +268,21 @@ final class AppCoordinator: ObservableObject {
         if settings.soundFeedbackEnabled {
             soundService.playCancel()
         }
+        scheduleModelUnloadIfNeeded()
     }
 
     func setTextProcessingEnabled(_ enabled: Bool) {
         settings.textProcessingEnabled = enabled
         textProcessing.setEnabled(enabled)
+    }
+
+    func setModelUnloadDelayMinutes(_ minutes: Int) {
+        settings.modelUnloadDelayMinutes = SettingsStore.clampedModelUnloadDelayMinutes(minutes)
+        scheduleModelUnloadIfNeeded()
+    }
+
+    func setLaunchAtLoginEnabled(_ enabled: Bool) {
+        launchAtLogin.setEnabled(enabled)
     }
 
     func deleteHistoryRecord(_ record: TranscriptionRecord) {
@@ -297,6 +321,30 @@ final class AppCoordinator: ObservableObject {
     private func showMainWindow() {
         NSApp.activate(ignoringOtherApps: true)
         mainWindowController.show()
+    }
+
+    private func scheduleModelUnloadIfNeeded() {
+        cancelModelUnloadTimer()
+        let delayMinutes = SettingsStore.clampedModelUnloadDelayMinutes(settings.modelUnloadDelayMinutes)
+        guard delayMinutes > 0, phase == .idle, asrModelLoaded, !asrModelIsLoading else { return }
+
+        modelUnloadTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delayMinutes * 60))
+            guard !Task.isCancelled else { return }
+            await self?.unloadASRModelAfterIdle()
+        }
+    }
+
+    private func cancelModelUnloadTimer() {
+        modelUnloadTask?.cancel()
+        modelUnloadTask = nil
+    }
+
+    private func unloadASRModelAfterIdle() async {
+        guard phase == .idle, asrModelLoaded, !asrModelIsLoading else { return }
+        await asrService.unload()
+        asrModelLoaded = false
+        asrStatusMessage = "Model unloaded after \(settings.modelUnloadDelayMinutes) minutes idle"
     }
 }
 

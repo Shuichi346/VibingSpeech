@@ -13,8 +13,11 @@ final class SettingsStore: ObservableObject {
     @Published var microphoneID: String { didSet { save() } }
     @Published var selectedSidebar: SidebarSelection { didSet { save() } }
     @Published var historyRetention: HistoryRetention { didSet { save() } }
+    @Published var modelUnloadDelayMinutes: Int { didSet { save() } }
 
     private let defaults: UserDefaults
+    static let defaultModelUnloadDelayMinutes = 5
+    static let maximumModelUnloadDelayMinutes = 60
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -29,6 +32,10 @@ final class SettingsStore: ObservableObject {
         microphoneID = defaults.string(forKey: "microphoneID") ?? MicrophoneDevice.systemDefault.id
         selectedSidebar = defaults.codableEnum("selectedSidebar") ?? .home
         historyRetention = defaults.codableEnum("historyRetention") ?? .forever
+        modelUnloadDelayMinutes = Self.clampedModelUnloadDelayMinutes(defaults.integer(forKey: "modelUnloadDelayMinutes"))
+        if defaults.object(forKey: "modelUnloadDelayMinutes") == nil {
+            modelUnloadDelayMinutes = Self.defaultModelUnloadDelayMinutes
+        }
     }
 
     func save() {
@@ -43,6 +50,11 @@ final class SettingsStore: ObservableObject {
         defaults.set(microphoneID, forKey: "microphoneID")
         defaults.set(selectedSidebar.rawValue, forKey: "selectedSidebar")
         defaults.set(historyRetention.rawValue, forKey: "historyRetention")
+        defaults.set(Self.clampedModelUnloadDelayMinutes(modelUnloadDelayMinutes), forKey: "modelUnloadDelayMinutes")
+    }
+
+    static func clampedModelUnloadDelayMinutes(_ minutes: Int) -> Int {
+        min(max(minutes, 0), maximumModelUnloadDelayMinutes)
     }
 }
 
@@ -206,4 +218,3 @@ extension JSONDecoder {
         return decoder
     }
 }
-

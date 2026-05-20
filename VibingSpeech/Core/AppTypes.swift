@@ -221,6 +221,7 @@ enum SidebarSelection: String, CaseIterable, Identifiable {
     case home
     case hotwords
     case history
+    case other
 
     var id: String { rawValue }
 
@@ -229,6 +230,7 @@ enum SidebarSelection: String, CaseIterable, Identifiable {
         case .home: "Home"
         case .hotwords: "Hotwords"
         case .history: "History"
+        case .other: "Other"
         }
     }
 
@@ -237,6 +239,7 @@ enum SidebarSelection: String, CaseIterable, Identifiable {
         case .home: "house"
         case .hotwords: "text.badge.plus"
         case .history: "clock"
+        case .other: "ellipsis.circle"
         }
     }
 }
