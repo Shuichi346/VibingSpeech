@@ -1,3 +1,4 @@
+<old-plans>
 ## Development Environment
 
 - Mac mini M4 (Apple Silicon, 24GB Unified Memory, macOS 26.3 (Tahoe))
@@ -943,3 +944,4 @@ VibingSpeech/
 9. Transcription history is displayed on screen and is persisted.
 10. Users can build and run following the `git clone` → `make build` → `make run` procedure. The final deliverable is `VibingSpeech.app`.
 11. On Intel Macs, an error message is displayed and the app terminates.
+</old-plans>
