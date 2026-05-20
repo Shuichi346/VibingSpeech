@@ -9,6 +9,9 @@ final class RecordingOverlayState: ObservableObject {
 
 @MainActor
 final class RecordingOverlayController {
+    private static let panelSize = NSSize(width: 150, height: 33)
+    private static let bottomInset: CGFloat = 28
+
     private let state: RecordingOverlayState
     private var panel: NSPanel?
 
@@ -19,7 +22,7 @@ final class RecordingOverlayController {
     func show() {
         if panel == nil {
             let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 300, height: 74),
+                contentRect: NSRect(origin: .zero, size: Self.panelSize),
                 styleMask: [.borderless, .nonactivatingPanel],
                 backing: .buffered,
                 defer: false
@@ -29,14 +32,22 @@ final class RecordingOverlayController {
             panel.isOpaque = false
             panel.backgroundColor = .clear
             panel.hasShadow = true
-            panel.contentView = NSHostingView(rootView: RecordingOverlayView(state: state))
+            panel.contentView = NSHostingView(
+                rootView: RecordingOverlayView(state: state)
+                    .frame(width: Self.panelSize.width, height: Self.panelSize.height)
+            )
             panel.ignoresMouseEvents = true
             self.panel = panel
         }
 
-        if let screen = NSScreen.main, let panel {
+        if let screen = targetScreen, let panel {
             let frame = screen.visibleFrame
-            panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.maxY - 130))
+            panel.setFrameOrigin(
+                NSPoint(
+                    x: frame.midX - panel.frame.width / 2,
+                    y: frame.minY + Self.bottomInset
+                )
+            )
             panel.orderFrontRegardless()
         }
     }
@@ -44,33 +55,40 @@ final class RecordingOverlayController {
     func hide() {
         panel?.orderOut(nil)
     }
+
+    private var targetScreen: NSScreen? {
+        let mouseLocation = NSEvent.mouseLocation
+        return NSScreen.screens.first { screen in
+            NSMouseInRect(mouseLocation, screen.frame, false)
+        } ?? NSScreen.main
+    }
 }
 
 struct RecordingOverlayView: View {
     @ObservedObject var state: RecordingOverlayState
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 6) {
             Image(systemName: state.phase == .recording ? "mic.fill" : "waveform")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(state.phase == .recording ? .red : .accentColor)
-                .frame(width: 28, height: 28)
+                .frame(width: 16, height: 16)
 
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(state.phase == .recording ? "Recording" : "Transcribing")
-                    .font(.headline)
+                    .font(.system(size: 8, weight: .semibold))
                 if state.phase == .recording {
                     WaveformView(level: state.rmsLevel)
-                        .frame(width: 190, height: 18)
+                        .frame(width: 98, height: 8)
                 } else {
                     ProgressView()
                         .controlSize(.small)
-                        .frame(width: 190, alignment: .leading)
+                        .frame(width: 98, alignment: .leading)
                 }
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 13)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
         .background(.regularMaterial, in: Capsule())
         .overlay(
             Capsule().stroke(.white.opacity(0.25), lineWidth: 1)
@@ -99,4 +117,3 @@ private struct WaveformView: View {
         }
     }
 }
-
