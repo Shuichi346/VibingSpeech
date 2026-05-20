@@ -68,26 +68,22 @@ struct RecordingOverlayView: View {
     @ObservedObject var state: RecordingOverlayState
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             Image(systemName: state.phase == .recording ? "mic.fill" : "waveform")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(state.phase == .recording ? .red : .accentColor)
-                .frame(width: 16, height: 16)
+                .frame(width: 14, height: 14)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(state.phase == .recording ? "Recording" : "Transcribing")
-                    .font(.system(size: 8, weight: .semibold))
-                if state.phase == .recording {
-                    WaveformView(level: state.rmsLevel)
-                        .frame(width: 98, height: 8)
-                } else {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(width: 98, alignment: .leading)
-                }
+            if state.phase == .recording {
+                WaveformView(level: state.rmsLevel)
+                    .frame(width: 104, height: 14)
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 104, alignment: .leading)
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 12)
         .padding(.vertical, 4)
         .background(.regularMaterial, in: Capsule())
         .overlay(
@@ -105,9 +101,12 @@ private struct WaveformView: View {
                 let bars = 18
                 let spacing = size.width / CGFloat(bars)
                 let t = timeline.date.timeIntervalSinceReferenceDate
+                let normalizedLevel = min(1, max(0, level))
+                let response = pow(normalizedLevel, 0.7)
                 for index in 0..<bars {
                     let wave = (sin(t * 6 + Double(index) * 0.72) + 1) / 2
-                    let amplitude = max(0.16, min(1, level + wave * 0.45))
+                    let shape = 0.35 + wave * 0.65
+                    let amplitude = min(1, 0.08 + response * shape)
                     let height = size.height * amplitude
                     let x = CGFloat(index) * spacing + spacing * 0.2
                     let rect = CGRect(x: x, y: (size.height - height) / 2, width: spacing * 0.45, height: height)

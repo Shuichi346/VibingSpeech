@@ -369,7 +369,9 @@ final class MicrophoneRecorder: ObservableObject {
         let meanSquare = samples.reduce(0.0) { partial, value in
             partial + Double(value * value)
         } / Double(count)
-        return min(1, sqrt(meanSquare) * 8)
+        let noiseFloor = 0.005
+        let adjustedRMS = max(0, sqrt(meanSquare) - noiseFloor)
+        return min(1, adjustedRMS * 32)
     }
 }
 
