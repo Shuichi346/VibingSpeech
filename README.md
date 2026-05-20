@@ -18,6 +18,16 @@ VibingSpeech is a native macOS dictation utility designed for Apple Silicon. It 
 
 The Xcode project is the release path. SwiftPM-only release builds are intentionally not used.
 
+## Archive
+
+Xcode GUI Archive is not reliable while the app depends on `speech-swift` because Release package builds can compile `SpeechVAD` for x86_64 and fail on `Float16`. Archive Apple Silicon builds from the command line instead:
+
+```sh
+./script/archive.sh
+```
+
+The script writes `build/VibingSpeech.xcarchive` and `build/VibingSpeech.app`. The output is arm64-only and intended for Apple Silicon Macs.
+
 ## Permissions
 
 On first launch, allow microphone access. To enable global hotkeys and cross-app insertion, open System Settings > Privacy & Security > Accessibility and enable VibingSpeech.
@@ -29,4 +39,3 @@ Audio, hotwords, settings, and transcription history stay on device. The only ne
 ## Signing
 
 The app is configured for local/ad-hoc personal-use signing with App Sandbox disabled. Developer ID signing and notarization are not configured until a valid signing identity is available.
-
