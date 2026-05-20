@@ -9,13 +9,18 @@ struct VibingSpeechApp: App {
     var body: some Scene {
         WindowGroup("VibingSpeech") {
             ContentView(coordinator: coordinator)
-                .frame(minWidth: 760, minHeight: 560)
+                .frame(width: AppLayout.windowWidth, height: AppLayout.windowHeight)
                 .preferredColorScheme(coordinator.preferredColorScheme)
+                .background(WindowAccessor { window in
+                    coordinator.registerMainWindow(window)
+                })
                 .task {
                     await coordinator.startup()
                 }
         }
         .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: AppLayout.windowWidth, height: AppLayout.windowHeight)
+        .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .newItem) { }
             CommandMenu("VibingSpeech") {
@@ -52,6 +57,7 @@ final class AppCoordinator: ObservableObject {
     private let asrService = ASRService()
     private let textInsertionService = TextInsertionService()
     private let soundService = SoundService()
+    private let mainWindowController = MainWindowController()
     private var menuBarController: MenuBarController?
     private var overlayController: RecordingOverlayController?
     private var startupStarted = false
@@ -255,6 +261,10 @@ final class AppCoordinator: ObservableObject {
         pasteboard.setString(text, forType: .string)
     }
 
+    func registerMainWindow(_ window: NSWindow) {
+        mainWindowController.register(window)
+    }
+
     private var isRunningOnAppleSilicon: Bool {
         var systemInfo = utsname()
         uname(&systemInfo)
@@ -276,8 +286,52 @@ final class AppCoordinator: ObservableObject {
 
     private func showMainWindow() {
         NSApp.activate(ignoringOtherApps: true)
-        if let window = NSApp.windows.first(where: { $0.title == "VibingSpeech" }) {
-            window.makeKeyAndOrderFront(nil)
+        mainWindowController.show()
+    }
+}
+
+@MainActor
+private final class MainWindowController: NSObject, NSWindowDelegate {
+    private weak var window: NSWindow?
+
+    func register(_ window: NSWindow) {
+        guard self.window !== window else { return }
+        self.window = window
+        window.delegate = self
+    }
+
+    func show() {
+        guard let window else { return }
+        window.deminiaturize(nil)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    nonisolated func windowShouldClose(_ sender: NSWindow) -> Bool {
+        Task { @MainActor in
+            sender.orderOut(nil)
+        }
+        return false
+    }
+}
+
+private struct WindowAccessor: NSViewRepresentable {
+    let onResolve: (NSWindow) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let window = view.window {
+                onResolve(window)
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            if let window = nsView.window {
+                onResolve(window)
+            }
         }
     }
 }

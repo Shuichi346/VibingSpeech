@@ -8,3 +8,5 @@ Project instructions for coding agents working in this repository.
 - The app is Apple Silicon only while it depends on `speech-swift` `Qwen3ASR`/`AudioCommon`; do not add Intel Mac support unless the dependency is guarded or replaced.
 - Keep AVAudioEngine tap callbacks non-main-actor isolated. In `VibingSpeech/Services/Services.swift`, create microphone tap blocks outside `@MainActor` recorder methods and hop to `MainActor` only after copying/converting audio samples.
 - Keep the recording overlay compact and bottom-centered. Its 150 x 33 panel geometry lives in `VibingSpeech/Views/RecordingOverlay.swift`, and the overlay should not show phase text unless that UI direction changes explicitly.
+- Keep the main window content size fixed at 760 x 560 via `AppLayout` and `.windowResizability(.contentSize)`. Make overflowing detail content scroll inside the window, and preserve a working sidebar collapse/restore path.
+- Preserve `MainWindowController` in `VibingSpeech/App/VibingSpeechApp.swift`: closing the main window should hide it, not destroy it, so the menu-bar Show Window item can restore the same window.

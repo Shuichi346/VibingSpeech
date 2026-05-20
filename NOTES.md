@@ -2,6 +2,10 @@
 
 ## 2026-05-20
 
+- The menu-bar Show Window action failed after closing the main window because `showMainWindow()` only searched `NSApp.windows` after SwiftUI had removed the window. `MainWindowController` now registers the `NSWindow`, intercepts close with `windowShouldClose`, hides it with `orderOut(nil)`, and restores it with `makeKeyAndOrderFront(nil)`.
+- The main window was constrained to a fixed 760 x 560 SwiftUI content size through `AppLayout` and `.windowResizability(.contentSize)` in `VibingSpeech/App/VibingSpeechApp.swift`; detail pages remain scrollable inside that viewport instead of letting the window stretch horizontally.
+- The sidebar collapse icon in `VibingSpeech/Views/ContentView.swift` now toggles between the full 146 pt navigation sidebar and a 46 pt restore rail. Keep both states available so users are not trapped after hiding navigation.
+- The Home settings list was split into grouped settings sections and the sidebar active item was changed from blue accent selection to a subtle gray source-list highlight to better match macOS settings-style surfaces.
 - The recording overlay was changed from a large top-screen status capsule to a 150 x 33 bottom-centered capsule in `VibingSpeech/Views/RecordingOverlay.swift`; the phase text was removed so only the icon and waveform/progress indicator remain.
 - The waveform now responds more strongly to speech by applying a small RMS noise floor and higher scaling in `MicrophoneRecorder.rmsLevel(for:)`, then using that normalized level as the primary bar-height driver in `WaveformView`.
 - The recording crash with `_swift_task_checkIsolatedSwift` / `dispatch_assert_queue` was caused by creating the AVAudioEngine tap closure inside `@MainActor` `MicrophoneRecorder.start(selectedDeviceID:)`; Swift 6 treated the escaping callback as main-actor isolated even though AVFAudio invoked it on `RealtimeMessenger.mServiceQueue`.

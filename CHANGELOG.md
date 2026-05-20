@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed the menu-bar Show Window action so the main window reappears after the user closes it.
+- Refined the main macOS window UI with a native gray sidebar, subtle source-list selection, grouped settings sections, a fixed 760 x 560 content size, scrollable detail panes, and a working sidebar collapse/restore control.
 - Moved the recording overlay to a compact bottom-centered capsule, removed phase text, and made the waveform respond more visibly to microphone input levels.
 - Created the native macOS Xcode project and app scaffold.
 - Added menu-bar lifecycle, global hotkey service, microphone capture, overlay, pasteboard insertion, local settings, hotwords, and history persistence.

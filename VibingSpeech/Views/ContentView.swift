@@ -1,8 +1,16 @@
 import SwiftUI
 
+enum AppLayout {
+    static let windowWidth: CGFloat = 760
+    static let windowHeight: CGFloat = 560
+    static let sidebarWidth: CGFloat = 146
+    static let collapsedSidebarWidth: CGFloat = 46
+}
+
 struct ContentView: View {
     @ObservedObject var coordinator: AppCoordinator
     @ObservedObject private var settings: SettingsStore
+    @State private var isSidebarVisible = true
 
     init(coordinator: AppCoordinator) {
         self.coordinator = coordinator
@@ -11,7 +19,13 @@ struct ContentView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            SidebarView(settings: settings)
+            if isSidebarVisible {
+                SidebarView(settings: settings, isSidebarVisible: $isSidebarVisible)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+            } else {
+                CollapsedSidebarView(isSidebarVisible: $isSidebarVisible)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+            }
             Divider()
             ZStack(alignment: .topLeading) {
                 detail
@@ -19,9 +33,12 @@ struct ContentView: View {
                     .transition(.opacity)
             }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .textBackgroundColor))
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(width: AppLayout.windowWidth, height: AppLayout.windowHeight)
+        .clipped()
         .animation(.easeInOut(duration: 0.12), value: settings.selectedSidebar)
+        .animation(.easeInOut(duration: 0.16), value: isSidebarVisible)
     }
 
     @ViewBuilder
@@ -39,45 +56,100 @@ struct ContentView: View {
 
 private struct SidebarView: View {
     @ObservedObject var settings: SettingsStore
+    @Binding var isSidebarVisible: Bool
 
     var body: some View {
         VStack(spacing: 10) {
             HStack {
                 Spacer()
                 Button {
+                    isSidebarVisible = false
                 } label: {
                     Image(systemName: "sidebar.left")
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
+                .help("Hide Sidebar")
             }
             .padding(.top, 14)
             .padding(.trailing, 14)
 
             ForEach(SidebarSelection.allCases) { item in
-                Button {
-                    settings.selectedSidebar = item
-                } label: {
-                    Label(item.title, systemImage: item.systemImage)
-                        .font(.system(size: 13, weight: .medium))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 8)
-                        .foregroundStyle(settings.selectedSidebar == item ? .white : .primary)
-                        .background {
-                            if settings.selectedSidebar == item {
-                                RoundedRectangle(cornerRadius: 7).fill(Color.accentColor)
-                            }
-                        }
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 10)
+                SidebarRow(
+                    item: item,
+                    isSelected: settings.selectedSidebar == item,
+                    select: { settings.selectedSidebar = item }
+                )
             }
 
             Spacer()
         }
-        .frame(width: 146)
-        .background(.bar)
+        .frame(width: AppLayout.sidebarWidth)
+        .background {
+            Color(nsColor: .controlBackgroundColor)
+            Rectangle().fill(.bar)
+        }
+    }
+}
+
+private struct CollapsedSidebarView: View {
+    @Binding var isSidebarVisible: Bool
+
+    var body: some View {
+        VStack {
+            HStack {
+                Spacer()
+                Button {
+                    isSidebarVisible = true
+                } label: {
+                    Image(systemName: "sidebar.left")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .help("Show Sidebar")
+                Spacer()
+            }
+            .padding(.top, 14)
+
+            Spacer()
+        }
+        .frame(width: AppLayout.collapsedSidebarWidth)
+        .background {
+            Color(nsColor: .controlBackgroundColor)
+            Rectangle().fill(.bar)
+        }
+    }
+}
+
+private struct SidebarRow: View {
+    let item: SidebarSelection
+    let isSelected: Bool
+    let select: () -> Void
+
+    var body: some View {
+        Button(action: select) {
+            Label {
+                Text(item.title)
+                    .font(.system(size: 13, weight: .medium))
+            } icon: {
+                Image(systemName: item.systemImage)
+                    .font(.system(size: 13, weight: .regular))
+                    .frame(width: 16)
+            }
+            .labelStyle(.titleAndIcon)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 8)
+            .foregroundStyle(isSelected ? .primary : .secondary)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(Color.primary.opacity(0.08))
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
     }
 }
 
@@ -178,35 +250,53 @@ private struct SettingsCard: View {
     @ObservedObject var settings: SettingsStore
 
     var body: some View {
-        VStack(spacing: 0) {
-            SettingsRow("Recording Hotkey") {
-                Picker("", selection: $settings.recordingHotkey) {
-                    ForEach(RecordingHotkey.allCases) { option in
-                        Text(option.displayName).tag(option)
+        VStack(spacing: 14) {
+            SettingsSection {
+                SettingsRow("Recording Hotkey") {
+                    Picker("", selection: $settings.recordingHotkey) {
+                        ForEach(RecordingHotkey.allCases) { option in
+                            Text(option.displayName).tag(option)
+                        }
                     }
+                    .pickerStyle(.menu)
+                    .onChange(of: settings.recordingHotkey) {
+                        coordinator.configureHotkey()
+                    }
+                } footer: {
+                    Text("Long press = hold mode · Short press = toggle mode")
                 }
-                .pickerStyle(.menu)
-                .onChange(of: settings.recordingHotkey) {
-                    coordinator.configureHotkey()
-                }
-            } footer: {
-                Text("Long press = hold mode · Short press = toggle mode")
-            }
 
-            Divider()
-
-            SettingsRow("Cancel Recording") {
-                Text("Esc").foregroundStyle(.secondary)
-            }
-
-            if !coordinator.permissions.accessibilityGranted {
                 Divider()
-                AccessibilityWarning(coordinator: coordinator)
+
+                SettingsRow("Cancel Recording") {
+                    Text("Esc").foregroundStyle(.secondary)
+                }
+
+                if !coordinator.permissions.accessibilityGranted {
+                    Divider()
+                    AccessibilityWarning(coordinator: coordinator)
+                }
+
+                Divider()
+
+                SettingsRow("Microphone") {
+                    Picker("", selection: $settings.microphoneID) {
+                        ForEach(coordinator.availableMicrophones) { device in
+                            Text(device.name).tag(device.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
+                Divider()
+
+                SettingsRow("Sound Feedback") {
+                    Toggle("", isOn: $settings.soundFeedbackEnabled)
+                        .toggleStyle(.switch)
+                }
             }
 
-            Divider()
-
-            VStack(spacing: 0) {
+            SettingsSection {
                 SettingsRow("Text Processing (LLM)") {
                     Toggle("", isOn: Binding(
                         get: { settings.textProcessingEnabled },
@@ -223,10 +313,11 @@ private struct SettingsCard: View {
                             .foregroundStyle(.secondary)
                         Spacer()
                     }
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, 12)
                     .padding(.bottom, 11)
 
                     Divider()
+
                     SettingsRow("Preset") {
                         Picker("", selection: $settings.textProcessingPreset) {
                             ForEach(TextProcessingPreset.allCases) { preset in
@@ -247,69 +338,68 @@ private struct SettingsCard: View {
                             .frame(minHeight: 80)
                             .padding(8)
                             .background(.background, in: RoundedRectangle(cornerRadius: 7))
-                            .padding(.horizontal, 10)
+                            .padding(.horizontal, 12)
                             .padding(.bottom, 10)
                     }
                 }
-            }
 
-            Divider()
+                Divider()
 
-            SettingsRow("Sound Feedback") {
-                Toggle("", isOn: $settings.soundFeedbackEnabled)
-                    .toggleStyle(.switch)
-            }
+                SettingsRow("Language") {
+                    Picker("", selection: $settings.languageMode) {
+                        ForEach(LanguageMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
 
-            Divider()
+                Divider()
 
-            SettingsRow("Language") {
-                Picker("", selection: $settings.languageMode) {
-                    ForEach(LanguageMode.allCases) { mode in
-                        Text(mode.displayName).tag(mode)
+                SettingsRow("ASR Model") {
+                    Picker("", selection: $settings.asrModelVariant) {
+                        ForEach(ASRModelVariant.allCases) { variant in
+                            Text("\(variant.displayName) (\(variant.estimatedDownloadSize))").tag(variant)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .disabled(coordinator.phase != .idle)
+                    .onChange(of: settings.asrModelVariant) {
+                        Task { await coordinator.loadASRModel() }
                     }
                 }
-                .pickerStyle(.menu)
             }
 
-            Divider()
-
-            SettingsRow("Appearance") {
-                Picker("", selection: $settings.appearanceMode) {
-                    ForEach(AppearanceMode.allCases) { mode in
-                        Text(mode.displayName).tag(mode)
+            SettingsSection {
+                SettingsRow("Appearance") {
+                    Picker("", selection: $settings.appearanceMode) {
+                        ForEach(AppearanceMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
                     }
+                    .pickerStyle(.menu)
                 }
-                .pickerStyle(.menu)
-            }
-
-            Divider()
-
-            SettingsRow("ASR Model") {
-                Picker("", selection: $settings.asrModelVariant) {
-                    ForEach(ASRModelVariant.allCases) { variant in
-                        Text("\(variant.displayName) (\(variant.estimatedDownloadSize))").tag(variant)
-                    }
-                }
-                .pickerStyle(.menu)
-                .disabled(coordinator.phase != .idle)
-                .onChange(of: settings.asrModelVariant) {
-                    Task { await coordinator.loadASRModel() }
-                }
-            }
-
-            Divider()
-
-            SettingsRow("Microphone") {
-                Picker("", selection: $settings.microphoneID) {
-                    ForEach(coordinator.availableMicrophones) { device in
-                        Text(device.name).tag(device.id)
-                    }
-                }
-                .pickerStyle(.menu)
             }
         }
+    }
+}
+
+private struct SettingsSection<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+        }
         .padding(.vertical, 2)
-        .background(.quaternary.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
+        .background {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.78))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.primary.opacity(0.06))
+        }
     }
 }
 
@@ -335,7 +425,7 @@ private struct SettingsRow<Accessory: View, Footer: View>: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 12)
         .padding(.vertical, 10)
     }
 }
