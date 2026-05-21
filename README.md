@@ -34,14 +34,17 @@ VibingSpeech is a native macOS dictation utility for Apple Silicon Macs. It runs
 
 <img src="githubreadme/ui-history.png" alt="VibingSpeech history screen" width="480">
 
+<img src="githubreadme/ui-other.png" alt="VibingSpeech other settings screen" width="480">
+
 ## Features
 
 - Global recording hotkey with short-press toggle mode and long-press hold mode.
 - Floating recording overlay with live audio level feedback and transcription state.
-- Local ASR model selection for Qwen3-ASR 0.6B and 1.7B MLX variants.
-- Optional local text cleanup presets for typo correction, bullet points, or a custom prompt.
+- Local ASR model selection for Qwen3-ASR 0.6B, 1.7B 4-bit, and 1.7B 8-bit MLX variants.
+- Optional local Text Processing (LLM) with typo correction, bullet-point formatting, or a custom prompt.
 - Local hotword list for names, terms, and proper nouns.
-- Local transcription history with retention settings, search, copy, delete, and clear actions.
+- Local transcription history with retention settings, search, copy, delete, clear, and original-ASR copy actions.
+- App-wide appearance mode, launch-at-login, and idle model auto-unload controls.
 - Pasteboard-safe text insertion into the active app with clipboard restoration.
 - Menu-bar lifecycle with no Dock icon.
 - Apple Silicon guard at launch.
@@ -89,10 +92,12 @@ The Xcode project is the primary build path. SwiftPM-only release builds are int
 1. Launch VibingSpeech.
 2. Allow microphone access when macOS prompts for it.
 3. Enable VibingSpeech in System Settings > Privacy & Security > Accessibility.
-4. Choose a recording hotkey, language mode, ASR model, microphone, and history retention from the Home screen.
+4. Choose a recording hotkey, microphone, Text Processing mode, language mode, and ASR model from Home.
 5. Press the recording hotkey in any app. Release or press again to stop, then VibingSpeech transcribes and pastes the final text.
 
 The default hotkey is Right Option. Escape cancels an active recording.
+
+Use Hotwords to improve recognition of names and domain terms, History to search or copy saved dictations, and Other to configure appearance, launch-at-login, and model auto-unload timing.
 
 ## Testing
 
@@ -152,7 +157,7 @@ VibingSpeech/
 
 VibingSpeech requires microphone access for recording. Accessibility permission is required for the global hotkey and for inserting text into the frontmost app.
 
-Audio samples, hotwords, settings, and transcription history are stored locally. Network access is expected when the ASR model is downloaded from Hugging Face for first use.
+Audio is processed locally. Hotwords, settings, and transcription history are stored on device. Network access is expected when ASR or Text Processing models are downloaded from Hugging Face for first use.
 
 ## Troubleshooting
 
@@ -165,3 +170,5 @@ If archive fails from Xcode's GUI, use `./script/archive.sh` from Terminal so th
 ## License
 
 VibingSpeech is licensed under the MIT License. See [LICENSE](LICENSE).
+
+Please check the individual licenses for the libraries and LLM models used.
