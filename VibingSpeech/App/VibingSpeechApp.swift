@@ -1,5 +1,6 @@
 import AppKit
 import AppIntents
+import Combine
 import SwiftUI
 
 @main
@@ -58,12 +59,23 @@ final class AppCoordinator: ObservableObject {
     private let asrService = ASRService()
     private let textInsertionService = TextInsertionService()
     private let soundService = SoundService()
+    private let appearanceService = AppearanceService()
     private let mainWindowController = MainWindowController()
     private var menuBarController: MenuBarController?
     private var overlayController: RecordingOverlayController?
     private var startupStarted = false
     private var asrLoadGeneration = UUID()
     private var modelUnloadTask: Task<Void, Never>?
+    private var appearanceModeCancellable: AnyCancellable?
+
+    init() {
+        appearanceService.apply(settings.appearanceMode)
+        appearanceModeCancellable = settings.$appearanceMode
+            .removeDuplicates()
+            .sink { [weak self] mode in
+                self?.appearanceService.apply(mode)
+            }
+    }
 
     var wordsToday: Int {
         history.records

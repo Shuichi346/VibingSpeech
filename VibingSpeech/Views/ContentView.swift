@@ -36,7 +36,6 @@ struct ContentView: View {
                 .background(Color(nsColor: .textBackgroundColor))
         }
         .frame(width: AppLayout.windowWidth, height: AppLayout.windowHeight)
-        .preferredColorScheme(settings.appearanceMode.preferredColorScheme)
         .clipped()
         .animation(.easeInOut(duration: 0.12), value: settings.selectedSidebar)
         .animation(.easeInOut(duration: 0.16), value: isSidebarVisible)
@@ -477,16 +476,6 @@ private struct SettingsCard: View {
                     .padding(.bottom, 11)
                 }
             }
-        }
-    }
-}
-
-private extension AppearanceMode {
-    var preferredColorScheme: ColorScheme? {
-        switch self {
-        case .system: nil
-        case .light: .light
-        case .dark: .dark
         }
     }
 }

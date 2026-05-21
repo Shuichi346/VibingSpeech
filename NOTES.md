@@ -3,7 +3,7 @@
 ## 2026-05-21
 
 - Sidebar navigation rows missed clicks in empty row space because the custom plain `Button` hit area followed the label content. `SidebarRow` now fills the available width and uses a rectangular `contentShape` while keeping the existing visual highlight.
-- Appearance mode changes did not refresh the window because `.preferredColorScheme` was derived through `AppCoordinator`, while `appearanceMode` lives on the nested `SettingsStore`. `ContentView` now applies the color scheme from its directly observed settings object, and the picker lives in the Other sidebar section.
+- Appearance mode changes previously relied on SwiftUI `.preferredColorScheme`, which did not clear AppKit window appearance when returning from Dark to System and did not affect AppKit-owned surfaces such as the recording overlay panel, menu bar item, or alerts. `AppCoordinator` now drives a single `AppearanceService` that maps `SettingsStore.appearanceMode` to `NSApp.appearance`, and `ContentView` no longer applies a separate preferred color scheme.
 - Model Auto-Unload previously dropped Swift references without forcing MLX-backed model memory to release. `ASRService.unload()` now calls `Qwen3ASRModel.unload()`, and `TextProcessingBackend.unload()` clears `MLX.Memory` cache after releasing the LLM container.
 - Model Auto-Unload behavior was made explicit in `AppCoordinator`: when Text Processing is enabled and ready, the idle timeout unloads both ASR and LLM; when Text Processing is disabled, only ASR remains subject to the standby idle unload.
 - The Other settings footer previously mentioned only ASR even though the idle path could unload a ready LLM. The copy now describes the ASR-plus-LLM and ASR-only cases separately.

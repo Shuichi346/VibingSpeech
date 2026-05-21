@@ -18,6 +18,20 @@ import Tokenizers
 #endif
 
 @MainActor
+final class AppearanceService {
+    func apply(_ mode: AppearanceMode) {
+        switch mode {
+        case .system:
+            NSApp.appearance = nil
+        case .light:
+            NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark:
+            NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
+@MainActor
 final class PermissionService: ObservableObject {
     @Published private(set) var microphoneGranted = false
     @Published private(set) var accessibilityGranted = false
