@@ -1,5 +1,10 @@
 # Notes
 
+## 2026-05-21
+
+- Model Auto-Unload behavior was made explicit in `AppCoordinator`: when Text Processing is enabled and ready, the idle timeout unloads both ASR and LLM; when Text Processing is disabled, only ASR remains subject to the standby idle unload.
+- The Other settings footer previously mentioned only ASR even though the idle path could unload a ready LLM. The copy now describes the ASR-plus-LLM and ASR-only cases separately.
+
 ## 2026-05-20
 
 - Added the Other sidebar settings screen with a persisted `modelUnloadDelayMinutes` value. `0` disables idle unloading, the default is 5 minutes, and the maximum is 60 minutes.

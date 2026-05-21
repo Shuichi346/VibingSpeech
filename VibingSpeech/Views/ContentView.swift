@@ -875,7 +875,7 @@ private struct OtherView: View {
                                 .labelsHidden()
                         }
                     } footer: {
-                        Text("Unload the ASR model after this many idle minutes with no recording or transcription. Off keeps the model loaded.")
+                        Text("Unload standby models after this many idle minutes with no recording or transcription.")
                     }
 
                     Divider()

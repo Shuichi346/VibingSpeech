@@ -337,11 +337,12 @@ final class AppCoordinator: ObservableObject {
     private func scheduleModelUnloadIfNeeded() {
         cancelModelUnloadTimer()
         let delayMinutes = SettingsStore.clampedModelUnloadDelayMinutes(settings.modelUnloadDelayMinutes)
+        let shouldUnloadTextProcessor = settings.textProcessingEnabled && textProcessing.isReady
         guard delayMinutes > 0,
               phase == .idle,
               !asrModelIsLoading,
               !textProcessing.isLoading,
-              asrModelLoaded || textProcessing.isReady else { return }
+              asrModelLoaded || shouldUnloadTextProcessor else { return }
 
         modelUnloadTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delayMinutes * 60))
@@ -357,12 +358,13 @@ final class AppCoordinator: ObservableObject {
 
     private func unloadModelsAfterIdle() async {
         guard phase == .idle, !asrModelIsLoading, !textProcessing.isLoading else { return }
+        let shouldUnloadTextProcessor = settings.textProcessingEnabled && textProcessing.isReady
         if asrModelLoaded {
             await asrService.unload()
             asrModelLoaded = false
             asrStatusMessage = "Model unloaded after \(settings.modelUnloadDelayMinutes) minutes idle"
         }
-        if textProcessing.isReady {
+        if shouldUnloadTextProcessor {
             await textProcessing.unloadAfterIdle()
         }
     }

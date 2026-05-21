@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Clarified Model Auto-Unload so the Other settings copy now states that idle timeout unloads both ASR and Text Processing (LLM) when Text Processing is on, and only ASR when Text Processing is off.
 - Added an Other sidebar settings screen with adjustable idle model unloading and Launch at Login, and wired Text Processing (LLM) to load `mlx-community/Qwen3-4B-Instruct-2507-4bit` through `mlx-swift-lm`.
 - Fixed a Text Processing (LLM) model compatibility error by removing the incorrect Qwen3Chat/Qwen3.5 path and using Qwen3 Instruct 2507 with its recommended sampling settings.
 - Added source-specific History copy controls for LLM-edited text, transcription text, and original ASR text, with distinct icons and copied-state feedback.
