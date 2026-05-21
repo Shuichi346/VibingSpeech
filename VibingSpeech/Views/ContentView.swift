@@ -36,6 +36,7 @@ struct ContentView: View {
                 .background(Color(nsColor: .textBackgroundColor))
         }
         .frame(width: AppLayout.windowWidth, height: AppLayout.windowHeight)
+        .preferredColorScheme(settings.appearanceMode.preferredColorScheme)
         .clipped()
         .animation(.easeInOut(duration: 0.12), value: settings.selectedSidebar)
         .animation(.easeInOut(duration: 0.16), value: isSidebarVisible)
@@ -474,17 +475,16 @@ private struct SettingsCard: View {
                     .padding(.bottom, 11)
                 }
             }
+        }
+    }
+}
 
-            SettingsSection {
-                SettingsRow("Appearance") {
-                    Picker("", selection: $settings.appearanceMode) {
-                        ForEach(AppearanceMode.allCases) { mode in
-                            Text(mode.displayName).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
-            }
+private extension AppearanceMode {
+    var preferredColorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
         }
     }
 }
@@ -857,6 +857,14 @@ private struct OtherView: View {
         settings.modelUnloadDelayMinutes == 0 ? "Off" : "\(settings.modelUnloadDelayMinutes) min"
     }
 
+    private var modelUnloadFooter: String {
+        if settings.textProcessingEnabled {
+            "After this many idle minutes with no recording or transcription, unload ASR and Text Processing (LLM)."
+        } else {
+            "After this many idle minutes with no recording or transcription, unload ASR."
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -865,6 +873,17 @@ private struct OtherView: View {
                     .padding(.top, 18)
 
                 SettingsSection {
+                    SettingsRow("Appearance") {
+                        Picker("", selection: $settings.appearanceMode) {
+                            ForEach(AppearanceMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+
+                    Divider()
+
                     SettingsRow("Model Auto-Unload") {
                         HStack(spacing: 8) {
                             Text(modelUnloadDelayLabel)
@@ -875,7 +894,7 @@ private struct OtherView: View {
                                 .labelsHidden()
                         }
                     } footer: {
-                        Text("Unload standby models after this many idle minutes with no recording or transcription.")
+                        Text(modelUnloadFooter)
                     }
 
                     Divider()

@@ -10,7 +10,6 @@ struct VibingSpeechApp: App {
         WindowGroup("VibingSpeech") {
             ContentView(coordinator: coordinator)
                 .frame(width: AppLayout.windowWidth, height: AppLayout.windowHeight)
-                .preferredColorScheme(coordinator.preferredColorScheme)
                 .background(WindowAccessor { window in
                     coordinator.registerMainWindow(window)
                 })
@@ -65,14 +64,6 @@ final class AppCoordinator: ObservableObject {
     private var startupStarted = false
     private var asrLoadGeneration = UUID()
     private var modelUnloadTask: Task<Void, Never>?
-
-    var preferredColorScheme: ColorScheme? {
-        switch settings.appearanceMode {
-        case .system: nil
-        case .light: .light
-        case .dark: .dark
-        }
-    }
 
     var wordsToday: Int {
         history.records

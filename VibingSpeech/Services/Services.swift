@@ -11,6 +11,7 @@ import Qwen3ASR
 
 #if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
 import HuggingFace
+import MLX
 import MLXLLM
 import MLXLMCommon
 import Tokenizers
@@ -529,6 +530,7 @@ actor ASRService {
 
     func unload() {
         #if canImport(Qwen3ASR)
+        model?.unload()
         model = nil
         #endif
         loadedVariant = nil
@@ -572,6 +574,7 @@ actor TextProcessingBackend {
     func unload() {
         #if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
         modelContainer = nil
+        Memory.clearCache()
         #endif
     }
 
