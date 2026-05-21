@@ -144,6 +144,7 @@ private struct SidebarRow: View {
             .padding(.horizontal, 11)
             .padding(.vertical, 8)
             .foregroundStyle(isSelected ? .primary : .secondary)
+            .contentShape(Rectangle())
             .background {
                 if isSelected {
                     RoundedRectangle(cornerRadius: 7)
@@ -152,6 +153,7 @@ private struct SidebarRow: View {
             }
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
     }
 }
