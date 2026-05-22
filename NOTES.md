@@ -1,5 +1,13 @@
 # Notes
 
+## 2026-05-22
+
+- `SMAppService.mainApp.register()` successfully registered the Launch at Login item, but VibingSpeech did not launch at Mac startup because the final `codesign --force --deep --sign -` in `script/archive.sh` did not enable Hardened Runtime.
+- Comparing `codesign -dvv` flags showed the decisive difference: the correctly launching SwiftClip.app had `flags=0x10002(adhoc,runtime)`, while the non-launching VibingSpeech.app had `flags=0x2(adhoc)`.
+- On macOS 13 and later, `SMAppService` does not require Hardened Runtime at registration time, but launchd requires it when waking the app at login time and silently refuses to launch the app if that requirement is not met.
+- `script/archive.sh` now adds `--options runtime` to each `codesign` call, signs nested dylibs, frameworks, and XPC-style bundles before the app without `--deep`, and fails if `codesign -dvv` does not show the `runtime` flag.
+- After Hardened Runtime was added to the archive signature, the microphone permission prompt stopped appearing because the app signature did not include the Audio Input entitlement. The project now signs with `com.apple.security.device.audio-input`, and `script/archive.sh` passes the same app entitlements when it re-signs the archived bundle.
+
 ## 2026-05-21
 
 - Sidebar navigation rows missed clicks in empty row space because the custom plain `Button` hit area followed the label content. `SidebarRow` now fills the available width and uses a rectangular `contentShape` while keeping the existing visual highlight.

@@ -61,6 +61,7 @@
 		20000000000000000000000E /* VibingSpeech.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VibingSpeech.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		20000000000000000000000F /* VibingSpeechTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VibingSpeechTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		200000000000000000000010 /* VibingSpeechUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VibingSpeechUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		200000000000000000000011 /* VibingSpeech.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VibingSpeech.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -113,7 +114,7 @@
 		600000000000000000000009 /* Views */ = {isa = PBXGroup; children = (200000000000000000000006 /* ContentView.swift */, 200000000000000000000007 /* RecordingOverlay.swift */); path = Views; sourceTree = "<group>"; };
 		60000000000000000000000A /* VibingSpeechTests */ = {isa = PBXGroup; children = (20000000000000000000000A /* CoreTests.swift */, 20000000000000000000000B /* PersistenceTests.swift */); path = VibingSpeechTests; sourceTree = "<group>"; };
 		60000000000000000000000B /* VibingSpeechUITests */ = {isa = PBXGroup; children = (20000000000000000000000C /* VibingSpeechUITests.swift */); path = VibingSpeechUITests; sourceTree = "<group>"; };
-		60000000000000000000000C /* Resources */ = {isa = PBXGroup; children = (20000000000000000000000D /* Info.plist */, 200000000000000000000009 /* Assets.xcassets */); path = Resources; sourceTree = "<group>"; };
+		60000000000000000000000C /* Resources */ = {isa = PBXGroup; children = (200000000000000000000011 /* VibingSpeech.entitlements */, 20000000000000000000000D /* Info.plist */, 200000000000000000000009 /* Assets.xcassets */); path = Resources; sourceTree = "<group>"; };
 		60000000000000000000000D /* Support */ = {isa = PBXGroup; children = (200000000000000000000008 /* Formatters.swift */); path = Support; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
@@ -351,6 +352,7 @@
 			buildSettings = {
 				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = VibingSpeech/Resources/VibingSpeech.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -377,6 +379,7 @@
 			buildSettings = {
 				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = VibingSpeech/Resources/VibingSpeech.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
