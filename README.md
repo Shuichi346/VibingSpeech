@@ -63,6 +63,7 @@ VibingSpeech is a native macOS dictation utility for Apple Silicon Macs. It runs
 - Apple Silicon Mac.
 - macOS 26.0 or newer.
 - Xcode 26.5 or newer.
+- Metal Toolchain. Xcode Settings → Components tab → Other Components → Metal Toolchain.
 - Microphone permission.
 - Accessibility permission for the global hotkey and cross-app paste.
 
