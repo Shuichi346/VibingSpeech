@@ -1,322 +1,174 @@
 <table>
   <thead>
     <tr>
+      <th style="text-align:center"><a href="README_ja.md">日本語</a></th>
       <th style="text-align:center"><a href="README.md">English</a></th>
-      <th style="text-align:center"><a href="README_jp.md">日本語</a></th>
     </tr>
   </thead>
 </table>
 
-<h1 align="center">VibingSpeech</h1>
+# VibingSpeech
 
-<p align="center">
-  <strong>Fully on-device macOS voice input app.</strong><br>
-  After recording is complete, AI performs batch analysis of the context, enabling transcription with higher accuracy than real-time methods. Since it converts text after understanding the meaning of entire sentences, misconversions of homonyms are significantly reduced. Global hotkey → Record → Transcribe (Qwen3-ASR) → Optional LLM text processing → Paste at cursor.
-</p>
+VibingSpeech is a native macOS dictation utility for Apple Silicon Macs. It runs as a menu-bar resident app, starts recording from a global hotkey, transcribes speech locally with Qwen3-ASR, optionally refines the text, and pastes the result into the frontmost app through the system pasteboard.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/platform-macOS%2015%2B-blue" alt="Platform">
-  <img src="https://img.shields.io/badge/chip-Apple%20Silicon-black" alt="Apple Silicon">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-  <img src="https://img.shields.io/badge/swift-6.2-orange" alt="Swift">
-</p>
+## Contents
 
----
+- [Preview](#preview)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Requirements](#requirements)
+- [Build and Run](#build-and-run)
+- [Usage](#usage)
+- [Testing](#testing)
+- [Archive](#archive)
+- [Project Structure](#project-structure)
+- [Permissions and Privacy](#permissions-and-privacy)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
 
-## Screenshots
+## Preview
 
-<p align="center">
-  <img src="docs/README_PNG/UI_main.png" alt="Home — Settings & Status" width="500">
-  <br>
-  <em>Home — Configure ASR model, text processing, hotkey, and more.</em>
-</p>
+<img src="githubreadme/ui-main.png" alt="VibingSpeech home screen" width="480">
 
-<p align="center">
-  <img src="docs/README_PNG/UI_Hotwords.png" alt="Hotwords — Custom Vocabulary" width="500">
-  <br>
-  <em>Hotword dictionary for proper nouns &amp; terms.</em>
-</p>
+<img src="githubreadme/ui-hotwords.png" alt="VibingSpeech hotwords screen" width="480">
 
-<p align="center">
-  <img src="docs/README_PNG/UI_History.png" alt="History — Transcription Log" width="500">
-  <br>
-  <em>Searchable transcription history.</em>
-</p>
+<img src="githubreadme/ui-history.png" alt="VibingSpeech history screen" width="480">
 
----
+<img src="githubreadme/ui-other.png" alt="VibingSpeech other settings screen" width="480">
 
 ## Features
 
-- ✅ **Global Hotkey** — Hold Right Option to record, release to transcribe (short press for toggle mode)
-- ✅ **On-Device Transcription** — Qwen3-ASR models, zero cloud calls, 52-language auto-detection
-- ✅ **ASR Model Selection** — Switch between 0.6B (8-bit, ~1 GB), 1.7B (4-bit, ~2.1 GB), and 1.7B (8-bit, ~2.3 GB)
-- ✅ **LLM Text Processing** — Optional on-device post-processing via Qwen3.5-4B-MLX-4bit (thinking disabled)
-- ✅ **Processing Presets** — "Fix Typos", "Bullet Points", or fully custom prompts
-- ✅ **Floating Overlay** — Animated waveform indicator during recording
-- ✅ **Hotword Dictionary** — Add custom terms to improve recognition accuracy
-- ✅ **Transcription History** — View, copy, and manage past transcriptions
-- ✅ **Menu Bar Resident** — Runs in background with no Dock icon
-- ✅ **Privacy First** — All processing stays on your Mac, nothing leaves the device
+- Global recording hotkey with short-press toggle mode and long-press hold mode.
+- Floating recording overlay with live audio level feedback and transcription state.
+- Local ASR model selection for Qwen3-ASR 0.6B, 1.7B 4-bit, and 1.7B 8-bit MLX variants.
+- Optional local Text Processing (LLM) with typo correction, bullet-point formatting, or a custom prompt.
+- Local hotword list for names, terms, and proper nouns.
+- Local transcription history with retention settings, search, copy, delete, clear, and original-ASR copy actions.
+- App-wide appearance mode, launch-at-login, and idle model auto-unload controls.
+- Pasteboard-safe text insertion into the active app with clipboard restoration.
+- Menu-bar lifecycle with no Dock icon.
+- Apple Silicon guard at launch.
+
+## Tech Stack
+
+- SwiftUI and AppKit for the macOS app, menu-bar item, and recording overlay.
+- AVFoundation for microphone capture and audio conversion.
+- Carbon and Core Graphics event taps for global hotkeys and simulated paste.
+- `speech-swift` `0.0.15` for Qwen3-ASR and audio support.
+- `mlx-swift-lm` `3.31.3` with `mlx-swift` `0.31.3` for local Qwen3 text processing.
+- JSON files in Application Support for local history and hotword persistence.
 
 ## Requirements
 
-- macOS 15.0+ (Sequoia) — tested on macOS 26 (Tahoe)
-- Apple Silicon (M1 or later)
-- **Xcode 26+** (full installation from App Store — Command Line Tools alone are not sufficient)
-- Internet connection (for first-time model downloads, ~1–4.8 GB)
+- Apple Silicon Mac.
+- macOS 26.0 or newer.
+- Xcode 26.5 or newer.
+- Microphone permission.
+- Accessibility permission for the global hotkey and cross-app paste.
 
-> **Note:** This app uses AppKit, SwiftUI, AVFoundation, CoreAudio, and Metal frameworks. The full Xcode installation is required to provide the macOS SDK and Metal Toolchain support.
+## Build and Run
 
-## Setup Guide (From Scratch)
+Use the project script from the repository root:
 
-If this is your first time setting up a development environment on your Mac, follow these steps in order.
-
-### Step 1: Install Xcode
-
-1. Open the **App Store** on your Mac
-2. Search for **Xcode** and install it (requires Apple ID, ~30 GB download)
-3. Launch Xcode once and agree to the license agreement
-4. Wait for Xcode to finish installing additional components
-
-Verify:
-
-```bash
-# Open Terminal (Applications → Utilities → Terminal)
-xcode-select -p
-# Expected: /Applications/Xcode.app/Contents/Developer
+```sh
+./script/build_and_run.sh --verify
 ```
 
-If the path points elsewhere, run:
+The script builds `VibingSpeech.xcodeproj`, launches the Debug app bundle, and verifies that the `VibingSpeech` process is running.
 
-```bash
-sudo xcode-select -s /Applications/Xcode.app
+Other supported modes:
+
+```sh
+./script/build_and_run.sh
+./script/build_and_run.sh --logs
+./script/build_and_run.sh --telemetry
+./script/build_and_run.sh --debug
 ```
 
-> **Why full Xcode?** This project depends on macOS SDK frameworks (AppKit, SwiftUI, AVFoundation, CoreAudio) and the Metal Toolchain. Command Line Tools alone do not include the Metal Toolchain, and `swift build` may fail to locate required frameworks.
+The Xcode project is the primary build path. SwiftPM-only release builds are intentionally not used for this app.
 
-### Step 2: Install Metal Toolchain
+## Usage
 
-Starting with Xcode 26, the **Metal Toolchain is no longer bundled** and must be installed separately. VibingSpeech depends on MLX Swift, which compiles Metal shaders at build time.
+1. Launch VibingSpeech.
+2. Allow microphone access when macOS prompts for it.
+3. Enable VibingSpeech in System Settings > Privacy & Security > Accessibility.
+4. Choose a recording hotkey, microphone, Text Processing mode, language mode, and ASR model from Home.
+5. Press the recording hotkey in any app. Release or press again to stop, then VibingSpeech transcribes and pastes the final text.
 
-**Install via Xcode UI:**
+The default hotkey is Right Option. Escape cancels an active recording.
 
-1. Open Xcode → Settings → Components
-2. Find **Metal Toolchain** under "Other Components"
-3. Click **Get**
+Use Hotwords to improve recognition of names and domain terms, History to search or copy saved dictations, and Other to configure appearance, launch-at-login, and model auto-unload timing.
 
-**Install via command line:**
+## Testing
 
-```bash
-xcodebuild -downloadComponent metalToolchain
+Run the app unit tests with:
+
+```sh
+xcodebuild -project VibingSpeech.xcodeproj \
+  -scheme VibingSpeech \
+  -configuration Debug \
+  -destination 'platform=macOS,arch=arm64' \
+  -derivedDataPath DerivedData \
+  CODE_SIGNING_ALLOWED=NO \
+  -only-testing:VibingSpeechTests \
+  test
 ```
 
-Verify:
+The current tests cover model metadata, language normalization, word counting, text cleanup, short-audio ASR guarding, settings persistence, history retention, corrupt history recovery, hotword validation, and pasteboard restoration.
 
-```bash
-xcrun metal --version
-# Expected: metal version 32.x.x
+## Archive
+
+Do not use the Xcode GUI Archive button while the app depends on `speech-swift`. Release package builds can compile `SpeechVAD` for x86_64 and fail on `Float16`.
+
+Use the archive script instead:
+
+```sh
+./script/archive.sh
 ```
 
-> **Note:** If the toolchain doesn't register after download, try:
-> ```bash
-> xcodebuild -downloadComponent metalToolchain -exportPath /tmp/MetalExport/
-> xcodebuild -importComponent metalToolchain -importPath /tmp/MetalExport/*.exportedBundle
-> ```
+The script writes:
 
-### Step 3: Verify Tools
+- `build/VibingSpeech.xcarchive`
+- `build/VibingSpeech.app`
 
-After installing Xcode, `git`, `swift`, and `make` are all available. Verify:
+The archive workflow passes `ARCHS=arm64` and produces an Apple Silicon-only app.
 
-```bash
-git --version
-# Expected: git version 2.x.x
+## Project Structure
 
-swift --version
-# Expected: Apple Swift version 6.2.x
-
-make --version
-# Expected: GNU Make 3.x.x or 4.x.x
+```text
+VibingSpeech/
+├── VibingSpeech.xcodeproj
+├── VibingSpeech/
+│   ├── App/              # app entry point and coordinator
+│   ├── Core/             # shared app enums and helpers
+│   ├── Models/           # domain models
+│   ├── Persistence/      # settings, history, and hotword stores
+│   ├── Resources/        # Info.plist and asset catalogs
+│   ├── Services/         # hotkey, audio, ASR, text insertion, permissions
+│   ├── Support/          # formatting helpers
+│   └── Views/            # SwiftUI views and overlay panel
+├── VibingSpeechTests/
+├── VibingSpeechUITests/
+├── docs/
+└── script/
 ```
 
-## Build & Run
+## Permissions and Privacy
 
-```bash
-git clone https://github.com/Shuichi346/VibingSpeech.git
-cd VibingSpeech
-make build
-make run
-```
+VibingSpeech requires microphone access for recording. Accessibility permission is required for the global hotkey and for inserting text into the frontmost app.
 
-`make build` compiles the Swift package and builds the MLX Metal shader library (`mlx.metallib`). The shader build is cached and only recompiles when sources change.
-
-To create a standalone `.app` bundle:
-
-```bash
-make app
-open VibingSpeech.app
-
-# Or install to /Applications
-cp -r VibingSpeech.app /Applications/
-```
-
-### First Launch
-
-On first launch, VibingSpeech automatically downloads the required AI models. **An internet connection is required.**
-
-- **ASR model** (default 0.6B): ~1 GB download
-- **Text processing model** (if enabled): ~2.9 GB download
-
-Download progress is shown in the app window. This is a one-time download; models are cached locally for future use.
-
-## Model Cache Location
-
-VibingSpeech downloads two types of models on first launch. Each is cached in a different location on your Mac.
-
-### ASR Model (Qwen3-ASR)
-
-Downloaded via [speech-swift](https://github.com/soniqo/speech-swift) and stored in:
-
-```
-~/Library/Caches/qwen3-speech/
-```
-
-This directory contains the selected ASR model weights (0.6B, 1.7B, etc.). You can override this location by setting the `QWEN3_CACHE_DIR` environment variable.
-
-### Text Processing Model (Qwen3.5-4B)
-
-Downloaded via [mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm) using the Hugging Face Hub client and stored in:
-
-```
-~/.cache/huggingface/hub/
-```
-
-The model files are inside a subdirectory named `models--mlx-community--Qwen3.5-4B-MLX-4bit`. You can override this location by setting the `HF_HOME` or `HF_HUB_CACHE` environment variable.
-
-### Freeing Disk Space
-
-If you want to reclaim disk space, simply delete the directories listed above. VibingSpeech will re-download the required models automatically on the next launch. In total, models can occupy approximately **1 – 4.8 GB** depending on your selected ASR variant and whether text processing is enabled.
-
-> **Tip:** The `~/Library` and `~/.cache` folders are hidden by default in Finder. Press `Cmd + Shift + .` in Finder to reveal hidden files, or navigate directly using Finder → Go → Go to Folder (`Cmd + Shift + G`).
-
-## Permissions
-
-VibingSpeech requires two permissions:
-
-1. **Accessibility** — For global hotkey detection and text insertion
-2. **Microphone** — For audio recording
-
-You'll be prompted on first launch. To enable later: System Settings → Privacy & Security.
-
-## How to Use
-
-1. Launch the app — a microphone icon appears in your menu bar
-2. **Hold mode:** Press and hold Right Option while speaking, release when done
-3. **Toggle mode:** Short press Right Option to start, press again to stop
-4. **Cancel:** Press Esc at any time during recording
-5. Click the menu bar icon → "Show Window" for settings, hotwords, and history
-
-## ASR Model Selection
-
-| Model | Download | Memory | Best for |
-|---|---|---|---|
-| Qwen3-ASR 0.6B (8-bit) | ~1.0 GB | ~1.5 GB | General use, fast startup |
-| Qwen3-ASR 1.7B (4-bit) | ~2.1 GB | ~3.5 GB | Complex speech, higher accuracy |
-| Qwen3-ASR 1.7B (8-bit) | ~2.3 GB | ~4.0 GB | Best accuracy, especially for Japanese |
-
-
-## Text Processing (LLM)
-
-When enabled, transcribed text is post-processed by an on-device LLM before pasting. **When disabled, the LLM is not loaded** — no extra memory, no extra latency. Since this is a small LLM model, it sometimes mistakes what you say for a prompt.
-
-**Model:** [Qwen3.5-4B-MLX-4bit](https://huggingface.co/mlx-community/Qwen3.5-4B-MLX-4bit) (~2.9 GB download, ~3.5 GB memory)
-
-Thinking (reasoning) mode is **disabled** for fast, direct responses. The model uses optimized non-thinking parameters: temperature=0.7, top_p=0.8, top_k=20, presence_penalty=1.5.
-
-| Preset | What it does |
-|---|---|
-| **Fix Typos** | Corrects spelling, typos, and grammar while preserving meaning |
-| **Bullet Points** | Reformats text into a structured bullet-point list |
-| **Custom** | Applies a user-defined system prompt for any processing task |
-
-**Processing flow:** Record → Transcribe (ASR) → Detect language → Process (LLM) → Paste
+Audio is processed locally. Hotwords, settings, and transcription history are stored on device. Network access is expected when ASR or Text Processing models are downloaded from Hugging Face for first use.
 
 ## Troubleshooting
 
-### `swift build` fails with "no such module" errors
+If the hotkey does not work, enable VibingSpeech in System Settings > Privacy & Security > Accessibility, then use Retry Hotkey Setup in the app.
 
-Ensure you have the full Xcode installed (not just Command Line Tools) and it is selected:
+If a recording starts and stops immediately, VibingSpeech discards audio that is too short for ASR instead of sending it to `speech-swift`.
 
-```bash
-sudo xcode-select -s /Applications/Xcode.app
-```
-
-### Metal shader build fails
-
-```bash
-xcodebuild -downloadComponent metalToolchain
-```
-
-If `xcrun metal` still fails after installing, restart your terminal or select the correct Xcode:
-
-```bash
-sudo xcode-select -s /Applications/Xcode.app
-```
-
-### `Failed to load the default metallib` at runtime
-
-```bash
-make metallib
-```
-
-### Global hotkey not working
-
-Enable Accessibility in System Settings → Privacy & Security → Accessibility.
-
-### App can't be opened because developer cannot be verified
-
-```bash
-xattr -cr VibingSpeech.app
-```
-
-### Model download fails or is very slow
-
-Ensure you have a stable internet connection. Models are downloaded from Hugging Face. If you're behind a proxy, set the `HTTP_PROXY` / `HTTPS_PROXY` environment variables.
-
-## Architecture
-
-```
-Sources/VibingSpeech/
-├── App/              # @main, AppDelegate, AppState (central state)
-├── Audio/            # AudioCaptureManager, TranscriptionEngine (Qwen3-ASR)
-├── HotkeyManager/    # GlobalHotkeyManager (CGEventTap)
-├── TextInsertion/    # Clipboard + Cmd+V simulation
-├── TextProcessing/   # LLM text processing (Qwen3.5-4B via mlx-swift-lm)
-├── Persistence/      # UserDefaults settings, JSON history/hotwords
-├── Views/            # Main window tabs, floating overlay
-├── Models/           # Data models, presets
-└── Utilities/        # Permissions, sound feedback, architecture check
-```
-
-## Dependencies
-
-| Package | Version | Purpose |
-|---|---|---|
-| [speech-swift](https://github.com/soniqo/speech-swift) | ≥ 0.0.9 | Qwen3-ASR speech recognition |
-| [mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm) | 3.31.3 | LLM inference for text processing |
-| [mlx-swift](https://github.com/ml-explore/mlx-swift) | 0.31.x | MLX array framework (shared) |
-| [swift-huggingface](https://github.com/huggingface/swift-huggingface) | ≥ 0.9.0 | HuggingFace model downloader (mlx-swift-lm v3) |
-| [swift-transformers](https://github.com/huggingface/swift-transformers) | ≥ 1.3.0 | Tokenizer implementation (mlx-swift-lm v3) |
-
-## Credits
-
-- **[speech-swift](https://github.com/soniqo/speech-swift)** (Apache 2.0) — Qwen3-ASR Swift wrapper
-- **[mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm)** (MIT) — LLM inference framework
-- **[Qwen3-ASR](https://huggingface.co/collections/aufklarer/qwen3-asr-mlx)** — Alibaba Cloud
-- **[Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B)** — Alibaba Cloud
-- **[MLX Swift](https://github.com/ml-explore/mlx-swift)** — Apple Machine Learning Explore
+If archive fails from Xcode's GUI, use `./script/archive.sh` from Terminal so the arm64-only package build settings are applied.
 
 ## License
 
-[MIT](LICENSE)
+VibingSpeech is licensed under the MIT License. See [LICENSE](LICENSE).
 
-External models and libraries used by this tool have their own respective licenses.
+Please check the individual licenses for the libraries and LLM models used.
