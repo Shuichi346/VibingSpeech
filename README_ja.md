@@ -63,6 +63,7 @@ VibingSpeech は、Apple Silicon Mac 向けのネイティブ macOS 音声入力
 - Apple Silicon Mac。
 - macOS 26.0 以降。
 - Xcode 26.5 以降。
+- Metalツールチェーン。Xcode Settings → Componentsタブ → Other Components → Metal Toolchain。
 - マイクの権限。
 - グローバルホットキーおよびアプリをまたいだ貼り付けのためのアクセシビリティ権限。
 
