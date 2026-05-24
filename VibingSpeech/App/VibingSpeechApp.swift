@@ -3,9 +3,24 @@ import AppIntents
 import Combine
 import SwiftUI
 
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    let coordinator = AppCoordinator()
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Task { @MainActor [coordinator] in
+            await coordinator.startup()
+        }
+    }
+}
+
 @main
 struct VibingSpeechApp: App {
-    @StateObject private var coordinator = AppCoordinator()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
+    private var coordinator: AppCoordinator {
+        appDelegate.coordinator
+    }
 
     var body: some Scene {
         WindowGroup("VibingSpeech") {
@@ -14,9 +29,6 @@ struct VibingSpeechApp: App {
                 .background(WindowAccessor { window in
                     coordinator.registerMainWindow(window)
                 })
-                .task {
-                    await coordinator.startup()
-                }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: AppLayout.windowWidth, height: AppLayout.windowHeight)
@@ -334,6 +346,18 @@ final class AppCoordinator: ObservableObject {
 
     private func showMainWindow() {
         NSApp.activate(ignoringOtherApps: true)
+        if mainWindowController.show() {
+            return
+        }
+        showDiscoveredMainWindow()
+        DispatchQueue.main.async { [weak self] in
+            self?.showDiscoveredMainWindow()
+        }
+    }
+
+    private func showDiscoveredMainWindow() {
+        guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
+        mainWindowController.register(window)
         mainWindowController.show()
     }
 
@@ -383,10 +407,12 @@ private final class MainWindowController: NSObject, NSWindowDelegate {
         window.delegate = self
     }
 
-    func show() {
-        guard let window else { return }
+    @discardableResult
+    func show() -> Bool {
+        guard let window else { return false }
         window.deminiaturize(nil)
         window.makeKeyAndOrderFront(nil)
+        return true
     }
 
     nonisolated func windowShouldClose(_ sender: NSWindow) -> Bool {

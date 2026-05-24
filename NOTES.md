@@ -1,10 +1,18 @@
 # Notes
 
+## 2026-05-23
+
+- The remaining Launch at Login failure was not that launchd failed to start the app. `ps`, Background Task Management, and unified logs showed `/Applications/VibingSpeech.app` launching at login, but the process idled without the menu-bar item, global hotkey, microphone permission flow, or ASR loading.
+- The root cause was that app-wide startup lived in `ContentView.task`, so an `LSUIElement` login-item launch could create a background process without ever running `AppCoordinator.startup()` until the SwiftUI window was explicitly opened.
+- `VibingSpeech/App/VibingSpeechApp.swift` now owns `AppCoordinator` from an `NSApplicationDelegate` and calls `startup()` from `applicationDidFinishLaunching(_:)`; the SwiftUI view no longer triggers startup.
+- The menu-bar Show Window path now handles the case where startup has run but the main SwiftUI window has not yet been registered by discovering a suitable `NSApp.windows` entry and registering it before showing.
+- The 2026-05-22 Hardened Runtime fix remains a valid archive/signing prerequisite for login-item launch, but it was not the complete root cause of the later "process exists but menu bar and hotkey do not work" behavior.
+
 ## 2026-05-22
 
-- `SMAppService.mainApp.register()` successfully registered the Launch at Login item, but VibingSpeech did not launch at Mac startup because the final `codesign --force --deep --sign -` in `script/archive.sh` did not enable Hardened Runtime.
-- Comparing `codesign -dvv` flags showed the decisive difference: the correctly launching SwiftClip.app had `flags=0x10002(adhoc,runtime)`, while the non-launching VibingSpeech.app had `flags=0x2(adhoc)`.
-- On macOS 13 and later, `SMAppService` does not require Hardened Runtime at registration time, but launchd requires it when waking the app at login time and silently refuses to launch the app if that requirement is not met.
+- `SMAppService.mainApp.register()` successfully registered the Launch at Login item, and an older archived VibingSpeech build lacked Hardened Runtime because the final `codesign --force --deep --sign -` in `script/archive.sh` did not pass `--options runtime`.
+- Comparing `codesign -dvv` flags showed an important archive-signing difference: the correctly launching SwiftClip.app had `flags=0x10002(adhoc,runtime)`, while that VibingSpeech archive had `flags=0x2(adhoc)`.
+- On macOS 13 and later, `SMAppService` does not require Hardened Runtime at registration time, but Launch at Login archive validation should keep Hardened Runtime enabled because login-item startup depends on the generated app bundle satisfying launchd/security policy.
 - `script/archive.sh` now adds `--options runtime` to each `codesign` call, signs nested dylibs, frameworks, and XPC-style bundles before the app without `--deep`, and fails if `codesign -dvv` does not show the `runtime` flag.
 - After Hardened Runtime was added to the archive signature, the microphone permission prompt stopped appearing because the app signature did not include the Audio Input entitlement. The project now signs with `com.apple.security.device.audio-input`, and `script/archive.sh` passes the same app entitlements when it re-signs the archived bundle.
 

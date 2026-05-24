@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Fixed Launch at Login so the app starts at user login on Apple Silicon Macs. The archive script now hardens the runtime on nested code and the app itself for `SMAppService` launchd startup.
+- Fixed Launch at Login startup initialization so menu-bar, hotkey, microphone permission, and ASR loading services start from `NSApplicationDelegate.applicationDidFinishLaunching(_:)` instead of waiting for the SwiftUI content view to appear.
+- Fixed the archive signing prerequisite for Launch at Login by hardening the runtime on nested code and the app itself for `SMAppService` launchd startup.
 - Restored microphone authorization prompts for hardened archive builds by signing the app with the macOS Audio Input entitlement.
 - Expanded sidebar navigation row hit targets so clicking empty space within a row now changes the selected section.
 - Moved the Appearance selector from Home to Other and fixed app-wide Light/Dark/System changes so AppKit and SwiftUI surfaces update together.
