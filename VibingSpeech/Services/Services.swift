@@ -537,6 +537,7 @@ private final class LiveASRSession {
     private static let sampleRate = 16_000
     private static let maxSegmentDuration: Float = 10.0
     private static let partialInterval: Float = 1.0
+    private static let initialPartialDelay: Float = 0.8
 
     private let model: Qwen3ASRModel
     private let processor: StreamingVADProcessor
@@ -606,7 +607,7 @@ private final class LiveASRSession {
             switch event {
             case .speechStarted(let time):
                 speechStartSample = min(Int(time * Float(Self.sampleRate)), allSamples.count)
-                lastPartialTime = time
+                lastPartialTime = time - (Self.partialInterval - Self.initialPartialDelay)
                 buffer.setStatus(nil)
                 emitUpdate()
             case .speechEnded(let segment):

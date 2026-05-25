@@ -262,12 +262,17 @@ final class AppCoordinator: ObservableObject {
 
         if wasLiveTranscriptionActive {
             phase = .transcribing
-            overlayState.phase = .idle
-            overlayState.resetLiveTranscript(visible: false)
-            overlayController?.hide()
+            overlayState.phase = .transcribing
 
             let liveResult = await asrService.finishLiveTranscription()
             if let liveResult {
+                overlayState.applyLiveTranscript(
+                    LiveTranscriptSnapshot(
+                        finalizedText: liveResult.text,
+                        partialText: "",
+                        statusMessage: nil
+                    )
+                )
                 await processAndCommit(asrResult: liveResult, duration: capture.duration)
             } else if capture.samples.count >= MicrophoneRecorder.minimumSamplesForASR {
                 await transcribeBatchAndCommit(samples: capture.samples, duration: capture.duration)
@@ -275,6 +280,9 @@ final class AppCoordinator: ObservableObject {
                 lastError = nil
             }
 
+            overlayState.phase = .idle
+            overlayState.resetLiveTranscript(visible: false)
+            overlayController?.hide()
             phase = .idle
             scheduleModelUnloadIfNeeded()
             return
