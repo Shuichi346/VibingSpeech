@@ -49,6 +49,39 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(WordCounter.count("明日は雨?"), 4)
     }
 
+    func testLiveTranscriptBufferReplacesPartialAndCommitsFinalSegments() {
+        var buffer = LiveTranscriptBuffer()
+        buffer.updatePartial(" Hello ")
+        XCTAssertEqual(buffer.snapshot.partialText, "Hello")
+        XCTAssertEqual(buffer.combinedText, "Hello")
+
+        buffer.updatePartial("Hello, the weather is nice")
+        XCTAssertEqual(buffer.snapshot.partialText, "Hello, the weather is nice")
+
+        buffer.commitFinal("Hello, the weather is nice today as well.")
+        XCTAssertEqual(buffer.snapshot.finalizedText, "Hello, the weather is nice today as well.")
+        XCTAssertEqual(buffer.snapshot.partialText, "")
+
+        buffer.updatePartial("I would like to talk")
+        XCTAssertEqual(
+            buffer.combinedText,
+            "Hello, the weather is nice today as well. I would like to talk"
+        )
+    }
+
+    func testLiveTranscriptBufferFlushesPartialAndResetsOnCancel() {
+        var buffer = LiveTranscriptBuffer()
+        buffer.commitFinal("First sentence.")
+        buffer.updatePartial("Second sentence")
+        buffer.commitPartialIfNeeded()
+
+        XCTAssertEqual(buffer.finalizedText, "First sentence. Second sentence")
+        XCTAssertEqual(buffer.partialText, "")
+
+        buffer.reset()
+        XCTAssertEqual(buffer.snapshot, .empty)
+    }
+
     func testTextProcessingUsesQwen3Instruct2507Model() {
         XCTAssertEqual(TextProcessingService.modelIdentifier, "mlx-community/Qwen3-4B-Instruct-2507-4bit")
         XCTAssertEqual(TextProcessingService.maxOutputTokens, 16_384)

@@ -12,15 +12,18 @@ final class PersistenceTests: XCTestCase {
 
         let store = SettingsStore(defaults: defaults)
         XCTAssertEqual(store.recordingHotkey, .rightOption)
+        XCTAssertFalse(store.liveTranscriptionEnabled)
         XCTAssertEqual(store.languageMode, .auto)
         XCTAssertEqual(store.modelUnloadDelayMinutes, 5)
 
         store.recordingHotkey = .leftControl
+        store.liveTranscriptionEnabled = true
         store.languageMode = .japanese
         store.modelUnloadDelayMinutes = 17
 
         let reloaded = SettingsStore(defaults: defaults)
         XCTAssertEqual(reloaded.recordingHotkey, .leftControl)
+        XCTAssertTrue(reloaded.liveTranscriptionEnabled)
         XCTAssertEqual(reloaded.languageMode, .japanese)
         XCTAssertEqual(reloaded.modelUnloadDelayMinutes, 17)
     }
