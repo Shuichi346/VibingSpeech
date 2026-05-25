@@ -6,6 +6,7 @@
 - The live path uses `SpeechVAD` with Qwen3 ASR to update an overlay-only transcript during recording; it does not paste partial or finalized chunks into the target app before stop.
 - Text Processing (LLM) remains final-only for Live Transcription: raw ASR is shown during recording, then the complete accumulated transcript is processed once after stop when LLM is enabled.
 - The compact 150 x 33 recording overlay remains the anchor, and the live transcript uses a separate bottom-centered pop-up above it only while recording.
+- The processing-state spinner in `RecordingOverlayView` was centered inside the compact capsule with a fixed-width `ZStack`, while the recording-state icon and waveform layout stayed unchanged.
 - Xcode MCP build passed after the live transcription change. The Xcode MCP test runner still hit the local Team ID test-bundle signing mismatch, while `xcodebuild -project VibingSpeech.xcodeproj -scheme VibingSpeech -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO test` passed all 17 tests.
 
 ## 2026-05-23

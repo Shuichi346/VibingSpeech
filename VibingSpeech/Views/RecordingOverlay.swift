@@ -178,19 +178,23 @@ struct RecordingOverlayView: View {
     @ObservedObject var state: RecordingOverlayState
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: state.phase == .recording ? "mic.fill" : "waveform")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(state.phase == .recording ? .red : .accentColor)
-                .frame(width: 14, height: 14)
-
+        Group {
             if state.phase == .recording {
-                WaveformView(level: state.rmsLevel)
-                    .frame(width: 104, height: 14)
+                HStack(spacing: 8) {
+                    phaseIcon
+                    WaveformView(level: state.rmsLevel)
+                        .frame(width: 104, height: 14)
+                }
             } else {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(width: 104, alignment: .leading)
+                ZStack {
+                    HStack {
+                        phaseIcon
+                        Spacer(minLength: 0)
+                    }
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                .frame(width: 126, height: 14)
             }
         }
         .padding(.horizontal, 12)
@@ -199,6 +203,13 @@ struct RecordingOverlayView: View {
         .overlay(
             Capsule().stroke(.white.opacity(0.25), lineWidth: 1)
         )
+    }
+
+    private var phaseIcon: some View {
+        Image(systemName: state.phase == .recording ? "mic.fill" : "waveform")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(state.phase == .recording ? .red : .accentColor)
+            .frame(width: 14, height: 14)
     }
 }
 
