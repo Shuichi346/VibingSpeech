@@ -79,6 +79,7 @@ final class AppCoordinator: ObservableObject {
     private var asrLoadGeneration = UUID()
     private var modelUnloadTask: Task<Void, Never>?
     private var appearanceModeCancellable: AnyCancellable?
+    private var liveTranscriptionActive = false
 
     init() {
         appearanceService.apply(settings.appearanceMode)
@@ -202,8 +203,37 @@ final class AppCoordinator: ObservableObject {
             return
         }
 
+        let shouldUseLiveTranscription = settings.liveTranscriptionEnabled
+        liveTranscriptionActive = false
+        overlayState.resetLiveTranscript(visible: shouldUseLiveTranscription)
+        if shouldUseLiveTranscription {
+            do {
+                let overlayState = self.overlayState
+                try await asrService.startLiveTranscription(
+                    languageMode: settings.languageMode,
+                    onUpdate: { snapshot in
+                        Task { @MainActor in
+                            overlayState.applyLiveTranscript(snapshot)
+                        }
+                    }
+                )
+                liveTranscriptionActive = true
+            } catch {
+                overlayState.resetLiveTranscript(visible: false)
+                lastError = "Live transcription unavailable: \(error.localizedDescription)"
+            }
+        }
+
         do {
             try microphoneRecorder.start(selectedDeviceID: settings.microphoneID)
+            if liveTranscriptionActive {
+                let asrService = self.asrService
+                microphoneRecorder.onSamples = { samples in
+                    Task {
+                        await asrService.ingestLiveSamples(samples)
+                    }
+                }
+            }
             phase = .recording
             overlayState.phase = .recording
             overlayController?.show()
@@ -211,6 +241,11 @@ final class AppCoordinator: ObservableObject {
                 soundService.playStart()
             }
         } catch {
+            if liveTranscriptionActive {
+                await asrService.cancelLiveTranscription()
+                liveTranscriptionActive = false
+            }
+            overlayState.resetLiveTranscript(visible: false)
             lastError = error.localizedDescription
             scheduleModelUnloadIfNeeded()
         }
@@ -218,9 +253,39 @@ final class AppCoordinator: ObservableObject {
 
     func finishRecordingAndTranscribe() async {
         guard phase == .recording else { return }
+        let wasLiveTranscriptionActive = liveTranscriptionActive
         let capture = microphoneRecorder.stop()
+        liveTranscriptionActive = false
         if settings.soundFeedbackEnabled {
             soundService.playStop()
+        }
+
+        if wasLiveTranscriptionActive {
+            phase = .transcribing
+            overlayState.phase = .transcribing
+
+            let liveResult = await asrService.finishLiveTranscription()
+            if let liveResult {
+                overlayState.applyLiveTranscript(
+                    LiveTranscriptSnapshot(
+                        finalizedText: liveResult.text,
+                        partialText: "",
+                        statusMessage: nil
+                    )
+                )
+                await processAndCommit(asrResult: liveResult, duration: capture.duration)
+            } else if capture.samples.count >= MicrophoneRecorder.minimumSamplesForASR {
+                await transcribeBatchAndCommit(samples: capture.samples, duration: capture.duration)
+            } else {
+                lastError = nil
+            }
+
+            overlayState.phase = .idle
+            overlayState.resetLiveTranscript(visible: false)
+            overlayController?.hide()
+            phase = .idle
+            scheduleModelUnloadIfNeeded()
+            return
         }
 
         guard capture.samples.count >= MicrophoneRecorder.minimumSamplesForASR else {
@@ -235,49 +300,7 @@ final class AppCoordinator: ObservableObject {
         phase = .transcribing
         overlayState.phase = .transcribing
 
-        do {
-            let asrResult = try await asrService.transcribe(samples: capture.samples, languageMode: settings.languageMode)
-            let finalText: String
-            let originalText: String?
-            let processedByLLM: Bool
-            var textProcessingError: String?
-
-            if settings.textProcessingEnabled {
-                do {
-                    finalText = try await textProcessing.process(
-                        asrResult.text,
-                        preset: settings.textProcessingPreset,
-                        customPrompt: settings.customPrompt,
-                        language: settings.languageMode,
-                        detectedLanguage: asrResult.detectedLanguage
-                    )
-                    originalText = asrResult.text
-                    processedByLLM = true
-                } catch {
-                    finalText = asrResult.text
-                    originalText = nil
-                    processedByLLM = false
-                    textProcessingError = "Text processing failed: \(error.localizedDescription)"
-                }
-            } else {
-                finalText = asrResult.text
-                originalText = nil
-                processedByLLM = false
-            }
-
-            textInsertionService.insert(finalText)
-            let record = TranscriptionRecord(
-                finalText: finalText,
-                originalASRText: originalText,
-                durationSeconds: capture.duration,
-                modelVariant: settings.asrModelVariant,
-                wasProcessedByLLM: processedByLLM
-            )
-            history.add(record, retention: settings.historyRetention)
-            lastError = textProcessingError
-        } catch {
-            lastError = error.localizedDescription
-        }
+        await transcribeBatchAndCommit(samples: capture.samples, duration: capture.duration)
 
         phase = .idle
         overlayState.phase = .idle
@@ -285,11 +308,66 @@ final class AppCoordinator: ObservableObject {
         scheduleModelUnloadIfNeeded()
     }
 
+    private func transcribeBatchAndCommit(samples: [Float], duration: Double) async {
+        do {
+            let asrResult = try await asrService.transcribe(samples: samples, languageMode: settings.languageMode)
+            await processAndCommit(asrResult: asrResult, duration: duration)
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func processAndCommit(asrResult: ASRResult, duration: Double) async {
+        let finalText: String
+        let originalText: String?
+        let processedByLLM: Bool
+        var textProcessingError: String?
+
+        if settings.textProcessingEnabled {
+            do {
+                finalText = try await textProcessing.process(
+                    asrResult.text,
+                    preset: settings.textProcessingPreset,
+                    customPrompt: settings.customPrompt,
+                    language: settings.languageMode,
+                    detectedLanguage: asrResult.detectedLanguage
+                )
+                originalText = asrResult.text
+                processedByLLM = true
+            } catch {
+                finalText = asrResult.text
+                originalText = nil
+                processedByLLM = false
+                textProcessingError = "Text processing failed: \(error.localizedDescription)"
+            }
+        } else {
+            finalText = asrResult.text
+            originalText = nil
+            processedByLLM = false
+        }
+
+        textInsertionService.insert(finalText)
+        let record = TranscriptionRecord(
+            finalText: finalText,
+            originalASRText: originalText,
+            durationSeconds: duration,
+            modelVariant: settings.asrModelVariant,
+            wasProcessedByLLM: processedByLLM
+        )
+        history.add(record, retention: settings.historyRetention)
+        lastError = textProcessingError
+    }
+
     func cancelRecording() async {
         guard phase != .idle else { return }
         microphoneRecorder.cancel()
+        if liveTranscriptionActive {
+            await asrService.cancelLiveTranscription()
+            liveTranscriptionActive = false
+        }
         phase = .idle
         overlayState.phase = .idle
+        overlayState.resetLiveTranscript(visible: false)
         overlayController?.hide()
         if settings.soundFeedbackEnabled {
             soundService.playCancel()

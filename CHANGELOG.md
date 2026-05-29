@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added an optional Live Transcription mode that shows partial and finalized ASR text in a bottom overlay while recording, keeps target-app insertion paste-on-stop only, and runs Text Processing (LLM) only once on the complete final transcript.
+- Centered the compact recording overlay's processing spinner while preserving the bottom-centered 150 x 33 panel layout.
 - Fixed Launch at Login startup initialization so menu-bar, hotkey, microphone permission, and ASR loading services start from `NSApplicationDelegate.applicationDidFinishLaunching(_:)` instead of waiting for the SwiftUI content view to appear.
 - Fixed the archive signing prerequisite for Launch at Login by hardening the runtime on nested code and the app itself for `SMAppService` launchd startup.
 - Restored microphone authorization prompts for hardened archive builds by signing the app with the macOS Audio Input entitlement.
@@ -24,6 +26,6 @@
 
 ### Dependency notes
 
-- 2026-05-20: `speech-swift` `0.0.15` is used for the Qwen3ASR and AudioCommon products. Hotwords are persisted locally, but the public `Qwen3ASRModel.transcribe` examples do not document a prompt-bias or hotword context parameter, so the app does not claim active ASR biasing until that API is confirmed.
+- 2026-05-20: `speech-swift` `0.0.15` is used for the Qwen3ASR, AudioCommon, and SpeechVAD products. Hotwords are persisted locally, but the public `Qwen3ASRModel.transcribe` examples do not document a prompt-bias or hotword context parameter, so the app does not claim active ASR biasing until that API is confirmed.
 - 2026-05-20: Text Processing uses `mlx-swift-lm` `3.31.3`, `swift-huggingface` `0.9.0`, and `swift-transformers` `1.3.0` to load `mlx-community/Qwen3-4B-Instruct-2507-4bit`.
 - 2026-05-20: Xcode GUI Archive can compile `speech-swift` for x86_64 under Release package settings, which fails on `Float16` usage in `SpeechVAD`. Use `script/archive.sh` or the equivalent `xcodebuild archive` command with `ARCHS=arm64` instead.

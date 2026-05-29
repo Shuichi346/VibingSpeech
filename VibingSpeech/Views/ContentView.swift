@@ -373,6 +373,16 @@ private struct SettingsCard: View {
                     Toggle("", isOn: $settings.soundFeedbackEnabled)
                         .toggleStyle(.switch)
                 }
+
+                Divider()
+
+                SettingsRow("Live Transcription") {
+                    Toggle("", isOn: $settings.liveTranscriptionEnabled)
+                        .toggleStyle(.switch)
+                        .disabled(coordinator.phase != .idle)
+                } footer: {
+                    Text("Shows live text in the overlay and still pastes once when recording stops.")
+                }
             }
 
             SettingsSection {

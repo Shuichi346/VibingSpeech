@@ -3,6 +3,7 @@ import Foundation
 @MainActor
 final class SettingsStore: ObservableObject {
     @Published var recordingHotkey: RecordingHotkey { didSet { save() } }
+    @Published var liveTranscriptionEnabled: Bool { didSet { save() } }
     @Published var textProcessingEnabled: Bool { didSet { save() } }
     @Published var textProcessingPreset: TextProcessingPreset { didSet { save() } }
     @Published var customPrompt: String { didSet { save() } }
@@ -22,6 +23,7 @@ final class SettingsStore: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         recordingHotkey = defaults.codableEnum("recordingHotkey") ?? .rightOption
+        liveTranscriptionEnabled = defaults.object(forKey: "liveTranscriptionEnabled") as? Bool ?? false
         textProcessingEnabled = defaults.object(forKey: "textProcessingEnabled") as? Bool ?? false
         textProcessingPreset = defaults.codableEnum("textProcessingPreset") ?? .fixTypos
         customPrompt = defaults.string(forKey: "customPrompt") ?? ""
@@ -40,6 +42,7 @@ final class SettingsStore: ObservableObject {
 
     func save() {
         defaults.set(recordingHotkey.rawValue, forKey: "recordingHotkey")
+        defaults.set(liveTranscriptionEnabled, forKey: "liveTranscriptionEnabled")
         defaults.set(textProcessingEnabled, forKey: "textProcessingEnabled")
         defaults.set(textProcessingPreset.rawValue, forKey: "textProcessingPreset")
         defaults.set(customPrompt, forKey: "customPrompt")
