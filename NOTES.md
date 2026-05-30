@@ -1,5 +1,11 @@
 # Notes
 
+## 2026-05-30
+
+- Microphone selection previously updated `settings.microphoneID` and the picker display, but `MicrophoneRecorder.start(selectedDeviceID:)` never applied that ID to `AVAudioEngine`, so recording continued from the current/default Core Audio input.
+- `MicrophoneRecorder` now enumerates Core Audio input devices by `kAudioDevicePropertyDeviceUID` and sets `kAudioOutputUnitProperty_CurrentDevice` on the input audio unit before reading the input format or installing the tap.
+- Xcode MCP build passed after the microphone-device fix. The Xcode MCP test runner still did not run tests because `VibingSpeechTests.xctest` failed to load with the local Team ID signing mismatch.
+
 ## 2026-05-25
 
 - Live Transcription was added as an off-by-default setting on Home while preserving the existing record-stop-transcribe-paste path when the setting is disabled.

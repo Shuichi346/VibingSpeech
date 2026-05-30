@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed Microphone settings so selecting a non-default input device now applies that Core Audio device to the recording engine instead of only changing the displayed device name.
 - Added an optional Live Transcription mode that shows partial and finalized ASR text in a bottom overlay while recording, keeps target-app insertion paste-on-stop only, and runs Text Processing (LLM) only once on the complete final transcript.
 - Centered the compact recording overlay's processing spinner while preserving the bottom-centered 150 x 33 panel layout.
 - Fixed Launch at Login startup initialization so menu-bar, hotkey, microphone permission, and ASR loading services start from `NSApplicationDelegate.applicationDidFinishLaunching(_:)` instead of waiting for the SwiftUI content view to appear.
