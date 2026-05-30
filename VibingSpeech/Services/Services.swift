@@ -1,6 +1,8 @@
 import AppKit
+import AudioToolbox
 @preconcurrency import AVFoundation
 import Carbon
+import CoreAudio
 import Foundation
 import ServiceManagement
 
@@ -230,12 +232,116 @@ private let hotkeyEventCallback: CGEventTapCallBack = { _, type, event, userInfo
 enum MicrophoneRecorderError: LocalizedError {
     case inputUnavailable
     case conversionFailed
+    case selectedDeviceUnavailable(String)
+    case deviceSelectionFailed(OSStatus)
 
     var errorDescription: String? {
         switch self {
         case .inputUnavailable: "No microphone input is available."
         case .conversionFailed: "Audio could not be converted to 16 kHz mono Float32."
+        case .selectedDeviceUnavailable:
+            "The selected microphone is unavailable."
+        case let .deviceSelectionFailed(status):
+            "The selected microphone could not be activated. Core Audio status: \(status)."
         }
+    }
+}
+
+private enum CoreAudioInputDevices {
+    static func availableDevices() -> [MicrophoneDevice] {
+        allInputDevices().map { MicrophoneDevice(id: $0.uid, name: $0.name) }
+    }
+
+    static func audioDeviceID(for uid: String) -> AudioDeviceID? {
+        allInputDevices().first { $0.uid == uid }?.id
+    }
+
+    private static func allInputDevices() -> [(id: AudioDeviceID, uid: String, name: String)] {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var dataSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            0,
+            nil,
+            &dataSize
+        ) == noErr else {
+            return []
+        }
+
+        let deviceCount = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+        guard deviceCount > 0 else { return [] }
+
+        var deviceIDs = Array(repeating: AudioDeviceID(), count: deviceCount)
+        let status = deviceIDs.withUnsafeMutableBufferPointer { buffer in
+            guard let baseAddress = buffer.baseAddress else { return OSStatus(kAudioHardwareUnspecifiedError) }
+            return AudioObjectGetPropertyData(
+                AudioObjectID(kAudioObjectSystemObject),
+                &address,
+                0,
+                nil,
+                &dataSize,
+                baseAddress
+            )
+        }
+        guard status == noErr else { return [] }
+
+        return deviceIDs.compactMap { deviceID in
+            guard hasInputChannels(deviceID),
+                  let uid = stringProperty(kAudioDevicePropertyDeviceUID, for: deviceID),
+                  let name = stringProperty(kAudioObjectPropertyName, for: deviceID)
+            else {
+                return nil
+            }
+            return (id: deviceID, uid: uid, name: name)
+        }
+    }
+
+    private static func hasInputChannels(_ deviceID: AudioDeviceID) -> Bool {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamConfiguration,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var dataSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &dataSize) == noErr,
+              dataSize > 0
+        else {
+            return false
+        }
+
+        let rawBufferList = UnsafeMutableRawPointer.allocate(
+            byteCount: Int(dataSize),
+            alignment: MemoryLayout<AudioBufferList>.alignment
+        )
+        defer { rawBufferList.deallocate() }
+
+        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, rawBufferList) == noErr else {
+            return false
+        }
+
+        let bufferList = rawBufferList.bindMemory(to: AudioBufferList.self, capacity: 1)
+        return UnsafeMutableAudioBufferListPointer(bufferList)
+            .contains { $0.mNumberChannels > 0 }
+    }
+
+    private static func stringProperty(_ selector: AudioObjectPropertySelector, for deviceID: AudioDeviceID) -> String? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var value: CFString = "" as CFString
+        var dataSize = UInt32(MemoryLayout<CFString>.size)
+        let status = withUnsafeMutablePointer(to: &value) { pointer in
+            AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, pointer)
+        }
+        guard status == noErr else { return nil }
+        return value as String
     }
 }
 
@@ -282,12 +388,7 @@ final class MicrophoneRecorder: ObservableObject {
     private var audioTap: MicrophoneAudioTap?
 
     func availableInputDevices() -> [MicrophoneDevice] {
-        let discovery = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.microphone, .external],
-            mediaType: .audio,
-            position: .unspecified
-        )
-        let devices = discovery.devices.map { MicrophoneDevice(id: $0.uniqueID, name: $0.localizedName) }
+        let devices = CoreAudioInputDevices.availableDevices()
         return [MicrophoneDevice.systemDefault] + devices
     }
 
@@ -295,6 +396,7 @@ final class MicrophoneRecorder: ObservableObject {
         cancel()
         let engine = AVAudioEngine()
         let input = engine.inputNode
+        try activateSelectedInputDevice(selectedDeviceID, on: input)
         let inputFormat = input.inputFormat(forBus: 0)
         guard inputFormat.channelCount > 0 else { throw MicrophoneRecorderError.inputUnavailable }
         samples = []
@@ -357,6 +459,28 @@ final class MicrophoneRecorder: ObservableObject {
         guard inputTapInstalled, let engine else { return }
         engine.inputNode.removeTap(onBus: 0)
         inputTapInstalled = false
+    }
+
+    private func activateSelectedInputDevice(_ selectedDeviceID: String, on input: AVAudioInputNode) throws {
+        guard selectedDeviceID != MicrophoneDevice.systemDefault.id else { return }
+        guard var audioDeviceID = CoreAudioInputDevices.audioDeviceID(for: selectedDeviceID) else {
+            throw MicrophoneRecorderError.selectedDeviceUnavailable(selectedDeviceID)
+        }
+        guard let audioUnit = input.audioUnit else {
+            throw MicrophoneRecorderError.inputUnavailable
+        }
+
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &audioDeviceID,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+        guard status == noErr else {
+            throw MicrophoneRecorderError.deviceSelectionFailed(status)
+        }
     }
 
     fileprivate func ingest(samples newSamples: [Float], level: Double, sessionID: UUID) {

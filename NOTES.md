@@ -1,5 +1,13 @@
 # Notes
 
+## 2026-05-30
+
+- Direct package releases were checked before updating pins: `speech-swift` latest was `0.0.19`, `swift-transformers` latest was `1.3.3`, while `mlx-swift-lm` `3.31.3` and `swift-huggingface` `0.9.0` were already current.
+- Updating `speech-swift` from `0.0.15` to `0.0.19` and `swift-transformers` from `1.3.0` to `1.3.3` resolved cleanly, passed `xcodebuild ... Debug ... test`, and passed an arm64 Release build with signing disabled.
+- Microphone selection previously updated `settings.microphoneID` and the picker display, but `MicrophoneRecorder.start(selectedDeviceID:)` never applied that ID to `AVAudioEngine`, so recording continued from the current/default Core Audio input.
+- `MicrophoneRecorder` now enumerates Core Audio input devices by `kAudioDevicePropertyDeviceUID` and sets `kAudioOutputUnitProperty_CurrentDevice` on the input audio unit before reading the input format or installing the tap.
+- Xcode MCP build passed after the microphone-device fix. The Xcode MCP test runner still did not run tests because `VibingSpeechTests.xctest` failed to load with the local Team ID signing mismatch.
+
 ## 2026-05-25
 
 - Live Transcription was added as an off-by-default setting on Home while preserving the existing record-stop-transcribe-paste path when the setting is disabled.
