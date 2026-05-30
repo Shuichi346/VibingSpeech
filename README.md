@@ -9,7 +9,7 @@
 
 # VibingSpeech
 
-VibingSpeech is a native macOS dictation utility for Apple Silicon Macs. It runs as a menu-bar resident app, starts recording from a global hotkey, transcribes speech locally with Qwen3-ASR, optionally refines the text, and pastes the result into the frontmost app through the system pasteboard.
+VibingSpeech is a native macOS dictation utility for Apple Silicon Macs. It runs as a menu-bar resident app, starts recording from a global hotkey, transcribes speech locally with Qwen3-ASR, can show an optional live transcript while recording, optionally refines the final text with a local Qwen3 LLM, and pastes the result into the frontmost app through the system pasteboard.
 
 ## Contents
 
@@ -40,9 +40,11 @@ VibingSpeech is a native macOS dictation utility for Apple Silicon Macs. It runs
 
 - Global recording hotkey with short-press toggle mode and long-press hold mode.
 - Floating recording overlay with live audio level feedback and transcription state.
+- Optional Live Transcription mode that shows partial and finalized ASR text in a separate overlay while recording, then still pastes only once when recording stops.
 - Local ASR model selection for Qwen3-ASR 0.6B, 1.7B 4-bit, and 1.7B 8-bit MLX variants.
-- Optional local Text Processing (LLM) with typo correction, bullet-point formatting, or a custom prompt.
-- Local hotword list for names, terms, and proper nouns.
+- Optional local Text Processing (LLM) with typo correction, bullet-point formatting, or a custom prompt, powered by `mlx-community/Qwen3-4B-Instruct-2507-4bit`.
+- Core Audio microphone selection that applies the chosen input device to the recording engine instead of relying only on the system default.
+- Local hotword manager for names, terms, and proper nouns.
 - Local transcription history with retention settings, search, copy, delete, clear, and original-ASR copy actions.
 - App-wide appearance mode, launch-at-login, and idle model auto-unload controls.
 - Pasteboard-safe text insertion into the active app with clipboard restoration.
@@ -52,10 +54,11 @@ VibingSpeech is a native macOS dictation utility for Apple Silicon Macs. It runs
 ## Tech Stack
 
 - SwiftUI and AppKit for the macOS app, menu-bar item, and recording overlay.
-- AVFoundation for microphone capture and audio conversion.
+- AVFoundation and Core Audio for microphone capture, device selection, and audio conversion.
 - Carbon and Core Graphics event taps for global hotkeys and simulated paste.
-- `speech-swift` `0.0.15` for Qwen3-ASR and audio support.
-- `mlx-swift-lm` `3.31.3` with `mlx-swift` `0.31.3` for local Qwen3 text processing.
+- `speech-swift` `0.0.15` for Qwen3-ASR, audio support, and `SpeechVAD`-backed live transcription.
+- `mlx-swift-lm` `3.31.3` with `mlx-swift` `0.31.3`, `swift-huggingface` `0.9.0`, and `swift-transformers` `1.3.0` for local Qwen3 text processing.
+- ServiceManagement for Launch at Login.
 - JSON files in Application Support for local history and hotword persistence.
 
 ## Requirements
@@ -98,7 +101,9 @@ The Xcode project is the primary build path. SwiftPM-only release builds are int
 
 The default hotkey is Right Option. Escape cancels an active recording.
 
-Use Hotwords to improve recognition of names and domain terms, History to search or copy saved dictations, and Other to configure appearance, launch-at-login, and model auto-unload timing.
+When Live Transcription is enabled, VibingSpeech shows partial and finalized ASR text above the compact recording overlay while recording. It does not live-paste chunks into the target app; insertion still happens once, after recording stops and optional Text Processing has run on the complete transcript.
+
+Use Hotwords to maintain a local list of names and domain terms, History to search or copy saved dictations, and Other to configure appearance, launch-at-login, and model auto-unload timing.
 
 ## Testing
 
@@ -115,7 +120,7 @@ xcodebuild -project VibingSpeech.xcodeproj \
   test
 ```
 
-The current tests cover model metadata, language normalization, word counting, text cleanup, short-audio ASR guarding, settings persistence, history retention, corrupt history recovery, hotword validation, and pasteboard restoration.
+The current tests cover model metadata, prompt generation, language normalization, word counting, live transcript buffering, short-audio ASR guarding, settings persistence, model unload delay bounds, history retention, corrupt history recovery, hotword validation, and pasteboard restoration.
 
 ## Archive
 
@@ -132,7 +137,7 @@ The script writes:
 - `build/VibingSpeech.xcarchive`
 - `build/VibingSpeech.app`
 
-The archive workflow passes `ARCHS=arm64` and produces an Apple Silicon-only app.
+The archive workflow passes `ARCHS=arm64`, signs nested code before the app bundle, preserves `VibingSpeech/Resources/VibingSpeech.entitlements`, enables Hardened Runtime, verifies that the runtime flag is present, and produces an Apple Silicon-only app.
 
 ## Project Structure
 
@@ -163,6 +168,8 @@ Audio is processed locally. Hotwords, settings, and transcription history are st
 ## Troubleshooting
 
 If the hotkey does not work, enable VibingSpeech in System Settings > Privacy & Security > Accessibility, then use Retry Hotkey Setup in the app.
+
+If the displayed microphone changes but recording still appears to use another device, stop any active recording and start a new one. VibingSpeech applies the selected Core Audio device when a recording session starts and reports an error if that device is unavailable or cannot be activated.
 
 If a recording starts and stops immediately, VibingSpeech discards audio that is too short for ASR instead of sending it to `speech-swift`.
 
