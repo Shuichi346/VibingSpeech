@@ -385,6 +385,11 @@ final class AppCoordinator: ObservableObject {
         scheduleModelUnloadIfNeeded()
     }
 
+    func setHistoryRetention(_ retention: HistoryRetention) {
+        settings.historyRetention = retention
+        history.applyRetention(retention)
+    }
+
     func setLaunchAtLoginEnabled(_ enabled: Bool) {
         launchAtLogin.setEnabled(enabled)
     }

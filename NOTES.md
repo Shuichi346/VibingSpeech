@@ -2,7 +2,7 @@
 
 ## 2026-05-30
 
-- History retention `.never` previously cleared only in-memory records; if `history.json` already existed, old records could be loaded again after relaunch. `HistoryRepository.add(..., retention: .never)` now removes the persisted file and has regression coverage.
+- Save History previously applied retention only when saving a new record; changing the dropdown to One Day, One Week, or Never did not immediately prune visible/persisted history. `HistoryRepository.applyRetention(_:)` now applies dropdown changes immediately, and `.never` removes the persisted file.
 - ASR model replacement now invalidates stale load completions and calls model/VAD unload paths before storing a new model, so rapid model changes or idle unloads cannot leave old resources active.
 - Text Processing load requests are now coalesced and canceled on disable/idle unload to avoid duplicate LLM loads and stale ready-state updates.
 - The first Xcode MCP test run after the refactor still hit the local Team ID test-bundle signing mismatch; `xcodebuild -project VibingSpeech.xcodeproj -scheme VibingSpeech -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO test` passed all 18 tests.

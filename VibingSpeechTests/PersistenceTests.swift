@@ -57,6 +57,38 @@ final class PersistenceTests: XCTestCase {
         XCTAssertTrue(HistoryRepository(directoryURL: directory).records.isEmpty)
     }
 
+    func testApplyingNeverRetentionRemovesExistingHistoryFile() throws {
+        let directory = try temporaryDirectory()
+        let file = directory.appendingPathComponent("history.json")
+        let repository = HistoryRepository(directoryURL: directory)
+        repository.add(sampleRecord(text: "kept"), retention: .forever)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+
+        repository.applyRetention(.never)
+
+        XCTAssertTrue(repository.records.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        XCTAssertTrue(HistoryRepository(directoryURL: directory).records.isEmpty)
+    }
+
+    func testApplyingTimedRetentionPrunesExistingHistory() throws {
+        let directory = try temporaryDirectory()
+        let repository = HistoryRepository(directoryURL: directory)
+        repository.add(sampleRecord(text: "recent", timestamp: Date()), retention: .forever)
+        repository.add(
+            sampleRecord(
+                text: "old",
+                timestamp: Calendar.current.date(byAdding: .day, value: -2, to: Date())!
+            ),
+            retention: .forever
+        )
+
+        repository.applyRetention(.oneDay)
+
+        XCTAssertEqual(repository.records.map(\.finalText), ["recent"])
+        XCTAssertEqual(HistoryRepository(directoryURL: directory).records.map(\.finalText), ["recent"])
+    }
+
     func testCorruptedHistoryIsPreserved() throws {
         let directory = try temporaryDirectory()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -96,9 +128,10 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(pasteboard.string(forType: .string), "user-change")
     }
 
-    private func sampleRecord(text: String) -> TranscriptionRecord {
+    private func sampleRecord(text: String, timestamp: Date = Date()) -> TranscriptionRecord {
         TranscriptionRecord(
             finalText: text,
+            timestamp: timestamp,
             durationSeconds: 1,
             modelVariant: .qwen3_0_6b_8bit,
             wasProcessedByLLM: false

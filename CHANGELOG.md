@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Fixed History retention set to Never so an existing `history.json` is removed instead of being restored on relaunch.
+- Fixed Save History retention so changing the dropdown immediately prunes timed history or removes `history.json` for Never instead of waiting for the next saved transcription.
 - Hardened ASR and Text Processing model loading so stale async completions cannot replace newer model state, and previous model resources are explicitly unloaded before replacement.
 - Reduced microphone tap audio-conversion allocation work by resampling directly from channel data when the input sample rate is not 16 kHz.
 - Updated direct Swift package pins to `speech-swift` `0.0.19` and `swift-transformers` `1.3.3` after package resolution, Debug tests, and Release build verification succeeded.

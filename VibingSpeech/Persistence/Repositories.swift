@@ -93,6 +93,22 @@ final class HistoryRepository: ObservableObject {
         persist()
     }
 
+    func applyRetention(_ retention: HistoryRetention) {
+        switch retention {
+        case .forever:
+            return
+        case .never:
+            records = []
+            removePersistedFile()
+        case .oneWeek, .oneDay:
+            let originalCount = records.count
+            pruneIfNeeded(retention: retention)
+            if records.count != originalCount {
+                persist()
+            }
+        }
+    }
+
     func delete(_ id: UUID) {
         records.removeAll { $0.id == id }
         persist()
