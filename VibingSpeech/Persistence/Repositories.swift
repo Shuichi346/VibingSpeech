@@ -85,6 +85,7 @@ final class HistoryRepository: ObservableObject {
     func add(_ record: TranscriptionRecord, retention: HistoryRetention) {
         guard retention != .never else {
             records = []
+            removePersistedFile()
             return
         }
         records.insert(record, at: 0)
@@ -137,6 +138,15 @@ final class HistoryRepository: ObservableObject {
         let preserved = fileURL.deletingPathExtension()
             .appendingPathExtension("corrupt-\(formatter.string(from: Date())).json")
         try? fileManager.moveItem(at: fileURL, to: preserved)
+    }
+
+    private func removePersistedFile() {
+        guard fileManager.fileExists(atPath: fileURL.path) else { return }
+        do {
+            try fileManager.removeItem(at: fileURL)
+        } catch {
+            NSLog("History persistence cleanup failed: \(error.localizedDescription)")
+        }
     }
 }
 

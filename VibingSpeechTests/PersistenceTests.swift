@@ -43,6 +43,20 @@ final class PersistenceTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("history.json").path))
     }
 
+    func testHistoryNeverRetentionRemovesExistingHistoryFile() throws {
+        let directory = try temporaryDirectory()
+        let file = directory.appendingPathComponent("history.json")
+        let repository = HistoryRepository(directoryURL: directory)
+        repository.add(sampleRecord(text: "kept"), retention: .forever)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+
+        repository.add(sampleRecord(text: "discarded"), retention: .never)
+
+        XCTAssertTrue(repository.records.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        XCTAssertTrue(HistoryRepository(directoryURL: directory).records.isEmpty)
+    }
+
     func testCorruptedHistoryIsPreserved() throws {
         let directory = try temporaryDirectory()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

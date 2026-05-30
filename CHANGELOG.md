@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixed History retention set to Never so an existing `history.json` is removed instead of being restored on relaunch.
+- Hardened ASR and Text Processing model loading so stale async completions cannot replace newer model state, and previous model resources are explicitly unloaded before replacement.
+- Reduced microphone tap audio-conversion allocation work by resampling directly from channel data when the input sample rate is not 16 kHz.
 - Updated direct Swift package pins to `speech-swift` `0.0.19` and `swift-transformers` `1.3.3` after package resolution, Debug tests, and Release build verification succeeded.
 - Fixed Microphone settings so selecting a non-default input device now applies that Core Audio device to the recording engine instead of only changing the displayed device name.
 - Added an optional Live Transcription mode that shows partial and finalized ASR text in a bottom overlay while recording, keeps target-app insertion paste-on-stop only, and runs Text Processing (LLM) only once on the complete final transcript.

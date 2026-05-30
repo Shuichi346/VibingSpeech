@@ -497,23 +497,30 @@ final class MicrophoneRecorder: ObservableObject {
         let channelCount = max(1, Int(buffer.format.channelCount))
         guard frameCount > 0 else { return [] }
 
-        var mono = [Float]()
-        mono.reserveCapacity(frameCount)
-        for frame in 0..<frameCount {
+        func monoSample(at frame: Int) -> Float {
             var value: Float = 0
             for channel in 0..<channelCount {
                 value += channels[channel][frame]
             }
-            mono.append(value / Float(channelCount))
+            return value / Float(channelCount)
         }
 
-        guard inputSampleRate > 0, inputSampleRate != 16_000 else { return mono }
+        guard inputSampleRate > 0 else { return [] }
+        guard inputSampleRate != 16_000 else {
+            var mono = [Float]()
+            mono.reserveCapacity(frameCount)
+            for frame in 0..<frameCount {
+                mono.append(monoSample(at: frame))
+            }
+            return mono
+        }
+
         let step = inputSampleRate / 16_000
         var position = 0.0
         var output = [Float]()
         output.reserveCapacity(Int(Double(frameCount) / step) + 1)
-        while Int(position) < mono.count {
-            output.append(mono[Int(position)])
+        while Int(position) < frameCount {
+            output.append(monoSample(at: Int(position)))
             position += step
         }
         return output
@@ -792,6 +799,7 @@ private final class LiveASRSession {
 
 actor ASRService {
     private(set) var loadedVariant: ASRModelVariant?
+    private var loadRequestID = UUID()
 
     #if canImport(Qwen3ASR)
     private var model: Qwen3ASRModel?
@@ -805,7 +813,15 @@ actor ASRService {
     func load(variant: ASRModelVariant) async throws {
         #if canImport(Qwen3ASR)
         if loadedVariant == variant, model != nil { return }
-        model = try await Qwen3ASRModel.fromPretrained(modelId: variant.huggingFaceModelID)
+        let requestID = UUID()
+        loadRequestID = requestID
+        unloadLoadedModels()
+        let loadedModel = try await Qwen3ASRModel.fromPretrained(modelId: variant.huggingFaceModelID)
+        guard loadRequestID == requestID else {
+            loadedModel.unload()
+            return
+        }
+        model = loadedModel
         loadedVariant = variant
         #else
         loadedVariant = nil
@@ -814,6 +830,11 @@ actor ASRService {
     }
 
     func unload() {
+        loadRequestID = UUID()
+        unloadLoadedModels()
+    }
+
+    private func unloadLoadedModels() {
         #if canImport(Qwen3ASR)
         #if canImport(SpeechVAD)
         liveSession?.cancel()
@@ -1000,6 +1021,7 @@ final class TextProcessingService: ObservableObject {
     var onStateChange: (() -> Void)?
 
     private let backend = TextProcessingBackend()
+    private var loadTask: (id: UUID, task: Task<Void, Error>)?
     private var loadGeneration = UUID()
     private var enabled = false
 
@@ -1012,6 +1034,8 @@ final class TextProcessingService: ObservableObject {
                 try? await loadIfNeeded(generation: generation)
             }
         } else {
+            loadTask?.task.cancel()
+            loadTask = nil
             isLoading = false
             isReady = false
             statusMessage = "Text processor unloaded"
@@ -1039,6 +1063,8 @@ final class TextProcessingService: ObservableObject {
 
     func unloadAfterIdle() async {
         loadGeneration = UUID()
+        loadTask?.task.cancel()
+        loadTask = nil
         await backend.unload()
         isLoading = false
         isReady = false
@@ -1048,17 +1074,44 @@ final class TextProcessingService: ObservableObject {
 
     private func loadIfNeeded(generation: UUID) async throws {
         if isReady { return }
+        if let loadTask {
+            try await loadTask.task.value
+            guard loadGeneration == generation, enabled else {
+                if !enabled {
+                    await backend.unload()
+                }
+                return
+            }
+            return
+        }
+
         isLoading = true
         statusMessage = "Loading text processor..."
         onStateChange?()
-        do {
+        let taskID = UUID()
+        let task = Task { [backend] in
             try await backend.load()
-            guard loadGeneration == generation, enabled else { return }
+        }
+        loadTask = (taskID, task)
+        do {
+            try await task.value
+            if loadTask?.id == taskID {
+                loadTask = nil
+            }
+            guard loadGeneration == generation, enabled else {
+                if !enabled {
+                    await backend.unload()
+                }
+                return
+            }
             isLoading = false
             isReady = true
             statusMessage = "Text processing ready"
             onStateChange?()
         } catch {
+            if loadTask?.id == taskID {
+                loadTask = nil
+            }
             guard loadGeneration == generation, enabled else { return }
             isLoading = false
             isReady = false

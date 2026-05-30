@@ -2,6 +2,10 @@
 
 ## 2026-05-30
 
+- History retention `.never` previously cleared only in-memory records; if `history.json` already existed, old records could be loaded again after relaunch. `HistoryRepository.add(..., retention: .never)` now removes the persisted file and has regression coverage.
+- ASR model replacement now invalidates stale load completions and calls model/VAD unload paths before storing a new model, so rapid model changes or idle unloads cannot leave old resources active.
+- Text Processing load requests are now coalesced and canceled on disable/idle unload to avoid duplicate LLM loads and stale ready-state updates.
+- The first Xcode MCP test run after the refactor still hit the local Team ID test-bundle signing mismatch; `xcodebuild -project VibingSpeech.xcodeproj -scheme VibingSpeech -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO test` passed all 18 tests.
 - Direct package releases were checked before updating pins: `speech-swift` latest was `0.0.19`, `swift-transformers` latest was `1.3.3`, while `mlx-swift-lm` `3.31.3` and `swift-huggingface` `0.9.0` were already current.
 - Updating `speech-swift` from `0.0.15` to `0.0.19` and `swift-transformers` from `1.3.0` to `1.3.3` resolved cleanly, passed `xcodebuild ... Debug ... test`, and passed an arm64 Release build with signing disabled.
 - Microphone selection previously updated `settings.microphoneID` and the picker display, but `MicrophoneRecorder.start(selectedDeviceID:)` never applied that ID to `AVAudioEngine`, so recording continued from the current/default Core Audio input.
