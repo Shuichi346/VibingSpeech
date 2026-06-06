@@ -642,6 +642,13 @@ private struct HistoryView: View {
     @State private var searchText = ""
     @State private var showingClearConfirmation = false
 
+    private var historyRetentionBinding: Binding<HistoryRetention> {
+        Binding(
+            get: { settings.historyRetention },
+            set: { coordinator.setHistoryRetention($0) }
+        )
+    }
+
     private var filteredRecords: [TranscriptionRecord] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return repository.records }
@@ -674,7 +681,7 @@ private struct HistoryView: View {
             .padding(.top, 18)
 
             SettingsRow("Save History") {
-                Picker("", selection: $settings.historyRetention) {
+                Picker("", selection: historyRetentionBinding) {
                     ForEach(HistoryRetention.allCases) { retention in
                         Text(retention.displayName).tag(retention)
                     }
