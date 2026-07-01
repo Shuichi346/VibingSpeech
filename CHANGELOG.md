@@ -5,6 +5,7 @@
 - Fixed Save History retention so changing the dropdown immediately prunes timed history or removes `history.json` for Never instead of waiting for the next saved transcription.
 - Hardened ASR and Text Processing model loading so stale async completions cannot replace newer model state, and previous model resources are explicitly unloaded before replacement.
 - Reduced microphone tap audio-conversion allocation work by resampling directly from channel data when the input sample rate is not 16 kHz.
+- Updated Swift package pins to `speech-swift` `0.0.21`, `mlx-swift-lm` `3.31.4`, and transitive `mlx-swift` `0.31.5` after release-note/API review, Debug tests, and a signing-disabled Release build.
 - Updated direct Swift package pins to `speech-swift` `0.0.19` and `swift-transformers` `1.3.3` after package resolution, Debug tests, and Release build verification succeeded.
 - Fixed Microphone settings so selecting a non-default input device now applies that Core Audio device to the recording engine instead of only changing the displayed device name.
 - Added an optional Live Transcription mode that shows partial and finalized ASR text in a bottom overlay while recording, keeps target-app insertion paste-on-stop only, and runs Text Processing (LLM) only once on the complete final transcript.
@@ -33,4 +34,5 @@
 
 - 2026-05-30: `speech-swift` `0.0.19` is used for the Qwen3ASR, AudioCommon, and SpeechVAD products. Hotwords are persisted locally, but the public `Qwen3ASRModel.transcribe` examples do not document a prompt-bias or hotword context parameter, so the app does not claim active ASR biasing until that API is confirmed.
 - 2026-05-30: Text Processing uses `mlx-swift-lm` `3.31.3`, `swift-huggingface` `0.9.0`, and `swift-transformers` `1.3.3` to load `mlx-community/Qwen3-4B-Instruct-2507-4bit`.
+- 2026-07-01: `speech-swift` `0.0.21` keeps the app-used Qwen3ASR, AudioCommon, and SpeechVAD APIs compatible. `mlx-swift-lm` `3.31.4` keeps the app-used downloader, tokenizer, model-container, `GenerateParameters`, and `ChatSession.respond` APIs compatible while resolving transitive `mlx-swift` to `0.31.5`.
 - 2026-05-20: Xcode GUI Archive can compile `speech-swift` for x86_64 under Release package settings, which fails on `Float16` usage in `SpeechVAD`. Use `script/archive.sh` or the equivalent `xcodebuild archive` command with `ARCHS=arm64` instead.

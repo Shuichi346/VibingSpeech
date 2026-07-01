@@ -1,3 +1,5 @@
+This PLANS.md is the initial plan. Do not modify the file based on it as a reference.
+
 # VibingSpeech — Final Implementation Plan (Xcode-First Zero Build)
 
 ## 0. Status of This Document

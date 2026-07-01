@@ -1,5 +1,13 @@
 # Notes
 
+## 2026-07-01
+
+- Release notes were checked before updating pins. `speech-swift` `0.0.20` and `0.0.21` focus on Nemotron/Parakeet/CoreML ASR additions and performance fixes; the app-used `Qwen3ASRModel.fromPretrained`, `transcribeWithLanguage`, `SileroVADModel`, `VADConfig`, and `StreamingVADProcessor` APIs remain compatible.
+- `mlx-swift-lm` `3.31.4` is a feature/fix release. The app-used `Downloader`, `TokenizerLoader`, `Tokenizer`, `LLMModelFactory.shared.loadContainer`, `GenerateParameters`, `ChatSession`, and `respond(to:)` signatures remain compatible.
+- `mlx-swift` `0.31.5` release notes call out a newer Swift tools requirement for SwiftPM users; the current Xcode 26.5 / Swift 6.3 toolchain resolves the package graph successfully.
+- Xcode package resolution updated `speech-swift` to `0.0.21`, `mlx-swift-lm` to `3.31.4`, transitive `mlx-swift` to `0.31.5`, and transitive `swift-syntax` to `603.0.2`; `speech-swift` also adds transitive `WhisperKit` `1.0.0`.
+- `xcodebuild -quiet -skipPackagePluginValidation -project VibingSpeech.xcodeproj -scheme VibingSpeech -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO test` passed all 20 tests. The same Release build command with `build` also passed. The skip flag is required because Xcode otherwise asks to enable the `mlx-swift` `CudaBuild` package plugin before compiling.
+
 ## 2026-05-30
 
 - Save History previously applied retention only when saving a new record; changing the dropdown to One Day, One Week, or Never did not immediately prune visible/persisted history. `HistoryRepository.applyRetention(_:)` now applies dropdown changes immediately, and `.never` removes the persisted file.
@@ -50,7 +58,7 @@
 - Added the Other sidebar settings screen with a persisted `modelUnloadDelayMinutes` value. `0` disables idle unloading, the default is 5 minutes, and the maximum is 60 minutes.
 - `AppCoordinator` now keeps both ASR and Text Processing models loaded while recording, transcribing, or text processing is active, then unloads any loaded idle models through the shared inactivity timer.
 - The previous `TextProcessingService.process()` implementation did not call an LLM; it returned stripped ASR text for `fixTypos` and `custom`. Text Processing now loads a local LLM and records `wasProcessedByLLM` only when generation succeeds.
-- Text Processing now uses `mlx-swift-lm` `3.31.3` with `mlx-community/Qwen3-4B-Instruct-2507-4bit`. This replaces the incorrect `Qwen3Chat` and Qwen3.5 loading attempts.
+- Text Processing now uses `mlx-swift-lm` with `mlx-community/Qwen3-4B-Instruct-2507-4bit`. This replaces the incorrect `Qwen3Chat` and Qwen3.5 loading attempts.
 - `Qwen3-4B-Instruct-2507-4bit` is a non-reasoning Qwen3 model and does not need `enable_thinking=false`, `/think`, `/nothink`, or app-side `<think>...</think>` stripping.
 - `TextProcessingBackend` loads the model with `LLMModelFactory.shared.loadContainer`, a Hugging Face downloader bridge, and a `swift-transformers` tokenizer bridge. The app target links `MLXLLM`, `MLXLMCommon`, `HuggingFace`, and `Tokenizers`.
 - Text Processing generation uses Qwen's recommended instruct settings where `GenerateParameters` supports them: `temperature=0.7`, `topP=0.8`, `topK=20`, `minP=0`, and `maxTokens=16_384`. `presencePenalty` is left unset to avoid avoidable language mixing.
