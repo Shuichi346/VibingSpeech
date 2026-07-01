@@ -3,6 +3,8 @@ Thumbs.db
 build/
 DerivedData/
 *.xcuserdata/
+**/xcuserdata/
+*.xcuserstate
 .swiftpm/
 *.xcworkspace/xcuserdata/
 dist/
