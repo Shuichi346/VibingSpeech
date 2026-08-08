@@ -15,7 +15,7 @@ mkdir -p "$BUILD_DIR"
 rm -rf "$ARCHIVE_PATH" "$APP_PATH"
 
 # Archive for Apple Silicon only.
-# Pass ARCHS=arm64 to SPM to work around the speech-swift x86_64 Float16 issue.
+# Pass ARCHS=arm64 to Swift package builds.
 # Archive unsigned here; signing is done in the steps below.
 /usr/bin/xcodebuild archive \
   -project "$PROJECT" \

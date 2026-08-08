@@ -1,5 +1,14 @@
 # Notes
 
+## 2026-08-08
+
+- The ASR backend was migrated from `speech-swift` `0.0.21` to `mlx-audio-swift` `0.1.3` after reading tag `v0.1.3` source at commit `d302a5c6080d2bb97bae38c7418f82abb76013b6`; the app now links `MLXAudioSTT` and preserves all existing Qwen3-ASR model identifiers and persisted variant values.
+- App-level VAD was removed. The native `StreamingInferenceSession` now drives only the review overlay, is stopped and drained before model reuse, and its text is discarded; the complete mono 16 kHz capture is always passed separately to `Qwen3ASRModel.generate` for the final result.
+- Full-buffer generation preserves one Qwen3-ASR context up to the library's 1,200-second default. Longer recordings are independently split at low-energy boundaries by `mlx-audio-swift`, with no transcript context carried across those splits.
+- ASR unload now drains live inference, releases Swift model references, and clears `MLX.Memory` because `mlx-audio-swift` `0.1.3` does not expose `Qwen3ASRModel.unload()`. Recording-operation generation checks prevent canceling during live drain, ASR, or LLM work from producing a late paste or history record.
+- `mlx-swift` was updated to `0.31.6` at revision `0bb916c67f4b9e5c682cbe02a42c701c93ab5021`. The existing constraints in `mlx-audio-swift` `0.1.3` and `mlx-swift-lm` `3.31.4` both accept that version.
+- `xcodebuild -quiet -skipPackagePluginValidation -project VibingSpeech.xcodeproj -scheme VibingSpeech -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO test` passed all 20 tests, and the matching signing-disabled Release build passed. The skip flag accepted the official package's changed build-plugin fingerprint in the noninteractive build.
+
 ## 2026-07-01
 
 - Release notes were checked before updating pins. `speech-swift` `0.0.20` and `0.0.21` focus on Nemotron/Parakeet/CoreML ASR additions and performance fixes; the app-used `Qwen3ASRModel.fromPretrained`, `transcribeWithLanguage`, `SileroVADModel`, `VADConfig`, and `StreamingVADProcessor` APIs remain compatible.

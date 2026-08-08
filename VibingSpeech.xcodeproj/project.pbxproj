@@ -19,9 +19,7 @@
 		10000000000000000000000A /* CoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* CoreTests.swift */; };
 		10000000000000000000000B /* PersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000B /* PersistenceTests.swift */; };
 		10000000000000000000000C /* VibingSpeechUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000C /* VibingSpeechUITests.swift */; };
-		10000000000000000000000D /* Qwen3ASR in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000002 /* Qwen3ASR */; };
-		10000000000000000000000E /* AudioCommon in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000003 /* AudioCommon */; };
-		100000000000000000000014 /* SpeechVAD in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000004 /* SpeechVAD */; };
+		10000000000000000000000D /* MLXAudioSTT in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000002 /* MLXAudioSTT */; };
 		100000000000000000000010 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000005 /* MLXLLM */; };
 		100000000000000000000011 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000006 /* MLXLMCommon */; };
 		100000000000000000000012 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000007 /* HuggingFace */; };
@@ -66,9 +64,32 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		500000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (10000000000000000000000D /* Qwen3ASR in Frameworks */, 10000000000000000000000E /* AudioCommon in Frameworks */, 100000000000000000000014 /* SpeechVAD in Frameworks */, 100000000000000000000010 /* MLXLLM in Frameworks */, 100000000000000000000011 /* MLXLMCommon in Frameworks */, 100000000000000000000012 /* HuggingFace in Frameworks */, 100000000000000000000013 /* Tokenizers in Frameworks */); runOnlyForDeploymentPostprocessing = 0; };
-		500000000000000000000002 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-		500000000000000000000003 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		500000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				10000000000000000000000D /* MLXAudioSTT in Frameworks */,
+				100000000000000000000010 /* MLXLLM in Frameworks */,
+				100000000000000000000011 /* MLXLMCommon in Frameworks */,
+				100000000000000000000012 /* HuggingFace in Frameworks */,
+				100000000000000000000013 /* Tokenizers in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		500000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		500000000000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -107,16 +128,90 @@
 			path = VibingSpeech;
 			sourceTree = "<group>";
 		};
-		600000000000000000000004 /* App */ = {isa = PBXGroup; children = (200000000000000000000001 /* VibingSpeechApp.swift */); path = App; sourceTree = "<group>"; };
-		600000000000000000000005 /* Core */ = {isa = PBXGroup; children = (200000000000000000000002 /* AppTypes.swift */); path = Core; sourceTree = "<group>"; };
-		600000000000000000000006 /* Models */ = {isa = PBXGroup; children = (200000000000000000000003 /* Models.swift */); path = Models; sourceTree = "<group>"; };
-		600000000000000000000007 /* Services */ = {isa = PBXGroup; children = (200000000000000000000005 /* Services.swift */); path = Services; sourceTree = "<group>"; };
-		600000000000000000000008 /* Persistence */ = {isa = PBXGroup; children = (200000000000000000000004 /* Repositories.swift */); path = Persistence; sourceTree = "<group>"; };
-		600000000000000000000009 /* Views */ = {isa = PBXGroup; children = (200000000000000000000006 /* ContentView.swift */, 200000000000000000000007 /* RecordingOverlay.swift */); path = Views; sourceTree = "<group>"; };
-		60000000000000000000000A /* VibingSpeechTests */ = {isa = PBXGroup; children = (20000000000000000000000A /* CoreTests.swift */, 20000000000000000000000B /* PersistenceTests.swift */); path = VibingSpeechTests; sourceTree = "<group>"; };
-		60000000000000000000000B /* VibingSpeechUITests */ = {isa = PBXGroup; children = (20000000000000000000000C /* VibingSpeechUITests.swift */); path = VibingSpeechUITests; sourceTree = "<group>"; };
-		60000000000000000000000C /* Resources */ = {isa = PBXGroup; children = (200000000000000000000011 /* VibingSpeech.entitlements */, 20000000000000000000000D /* Info.plist */, 200000000000000000000009 /* Assets.xcassets */); path = Resources; sourceTree = "<group>"; };
-		60000000000000000000000D /* Support */ = {isa = PBXGroup; children = (200000000000000000000008 /* Formatters.swift */); path = Support; sourceTree = "<group>"; };
+		600000000000000000000004 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000001 /* VibingSpeechApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		600000000000000000000005 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000002 /* AppTypes.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		600000000000000000000006 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000003 /* Models.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		600000000000000000000007 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000005 /* Services.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		600000000000000000000008 /* Persistence */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000004 /* Repositories.swift */,
+			);
+			path = Persistence;
+			sourceTree = "<group>";
+		};
+		600000000000000000000009 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000006 /* ContentView.swift */,
+				200000000000000000000007 /* RecordingOverlay.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		60000000000000000000000A /* VibingSpeechTests */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000000A /* CoreTests.swift */,
+				20000000000000000000000B /* PersistenceTests.swift */,
+			);
+			path = VibingSpeechTests;
+			sourceTree = "<group>";
+		};
+		60000000000000000000000B /* VibingSpeechUITests */ = {
+			isa = PBXGroup;
+			children = (
+				20000000000000000000000C /* VibingSpeechUITests.swift */,
+			);
+			path = VibingSpeechUITests;
+			sourceTree = "<group>";
+		};
+		60000000000000000000000C /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000011 /* VibingSpeech.entitlements */,
+				20000000000000000000000D /* Info.plist */,
+				200000000000000000000009 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		60000000000000000000000D /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000008 /* Formatters.swift */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -134,9 +229,7 @@
 			);
 			name = VibingSpeech;
 			packageProductDependencies = (
-				A00000000000000000000002 /* Qwen3ASR */,
-				A00000000000000000000003 /* AudioCommon */,
-				A00000000000000000000004 /* SpeechVAD */,
+				A00000000000000000000002 /* MLXAudioSTT */,
 				A00000000000000000000005 /* MLXLLM */,
 				A00000000000000000000006 /* MLXLMCommon */,
 				A00000000000000000000007 /* HuggingFace */,
@@ -190,21 +283,32 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2650;
-				LastUpgradeCheck = 2650;
+				LastUpgradeCheck = 2660;
 				TargetAttributes = {
-					400000000000000000000001 = {CreatedOnToolsVersion = 26.5; };
-					400000000000000000000002 = {CreatedOnToolsVersion = 26.5; TestTargetID = 400000000000000000000001; };
-					400000000000000000000003 = {CreatedOnToolsVersion = 26.5; TestTargetID = 400000000000000000000001; };
+					400000000000000000000001 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					400000000000000000000002 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 400000000000000000000001;
+					};
+					400000000000000000000003 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 400000000000000000000001;
+					};
 				};
 			};
 			buildConfigurationList = 900000000000000000000001 /* Build configuration list for PBXProject "VibingSpeech" */;
 			compatibilityVersion = "Xcode 15.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
-			knownRegions = (en, Base);
+			knownRegions = (
+				en,
+				Base,
+			);
 			mainGroup = 600000000000000000000001;
 			packageReferences = (
-				A00000000000000000000001 /* XCRemoteSwiftPackageReference "speech-swift" */,
+				A00000000000000000000001 /* XCRemoteSwiftPackageReference "mlx-audio-swift" */,
 				A00000000000000000000009 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
 				A0000000000000000000000A /* XCRemoteSwiftPackageReference "swift-huggingface" */,
 				A0000000000000000000000B /* XCRemoteSwiftPackageReference "swift-transformers" */,
@@ -221,20 +325,76 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		500000000000000000000005 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000009 /* Assets.xcassets in Resources */); runOnlyForDeploymentPostprocessing = 0; };
-		500000000000000000000007 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-		500000000000000000000009 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		500000000000000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000009 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		500000000000000000000007 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		500000000000000000000009 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		500000000000000000000004 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000001, 100000000000000000000002, 100000000000000000000003, 100000000000000000000004, 100000000000000000000005, 100000000000000000000006, 100000000000000000000007, 100000000000000000000008); runOnlyForDeploymentPostprocessing = 0; };
-		500000000000000000000006 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (10000000000000000000000A, 10000000000000000000000B); runOnlyForDeploymentPostprocessing = 0; };
-		500000000000000000000008 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (10000000000000000000000C); runOnlyForDeploymentPostprocessing = 0; };
+		500000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000001 /* VibingSpeechApp.swift in Sources */,
+				100000000000000000000002 /* AppTypes.swift in Sources */,
+				100000000000000000000003 /* Models.swift in Sources */,
+				100000000000000000000004 /* Repositories.swift in Sources */,
+				100000000000000000000005 /* Services.swift in Sources */,
+				100000000000000000000006 /* ContentView.swift in Sources */,
+				100000000000000000000007 /* RecordingOverlay.swift in Sources */,
+				100000000000000000000008 /* Formatters.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		500000000000000000000006 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				10000000000000000000000A /* CoreTests.swift in Sources */,
+				10000000000000000000000B /* PersistenceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		500000000000000000000008 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				10000000000000000000000C /* VibingSpeechUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		800000000000000000000001 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 400000000000000000000001 /* VibingSpeech */; targetProxy = 300000000000000000000001 /* PBXContainerItemProxy */; };
-		800000000000000000000002 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 400000000000000000000001 /* VibingSpeech */; targetProxy = 300000000000000000000002 /* PBXContainerItemProxy */; };
+		800000000000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 400000000000000000000001 /* VibingSpeech */;
+			targetProxy = 300000000000000000000001 /* PBXContainerItemProxy */;
+		};
+		800000000000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 400000000000000000000001 /* VibingSpeech */;
+			targetProxy = 300000000000000000000002 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -271,6 +431,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -279,7 +440,10 @@
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = ("DEBUG=1", "$(inherited)");
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
@@ -291,6 +455,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 			};
 			name = Debug;
@@ -328,6 +493,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -345,6 +511,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -352,21 +519,25 @@
 		900000000000000000000007 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = arm64;
+				ARCHS = "$(ARCHS_STANDARD)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = VibingSpeech/Resources/VibingSpeech.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_INTENTS_METADATA_GENERATION = NO;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_APP_INTENTS_METADATA_GENERATION = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = VibingSpeech/Resources/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks");
-				MARKETING_VERSION = 1.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shuichi.VibingSpeech;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = macosx;
@@ -379,21 +550,25 @@
 		900000000000000000000008 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = arm64;
+				ARCHS = "$(ARCHS_STANDARD)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = VibingSpeech/Resources/VibingSpeech.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_INTENTS_METADATA_GENERATION = NO;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_APP_INTENTS_METADATA_GENERATION = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = VibingSpeech/Resources/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks");
-				MARKETING_VERSION = 1.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shuichi.VibingSpeech;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = macosx;
@@ -409,9 +584,14 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_INTENTS_METADATA_GENERATION = NO;
 				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@loader_path/../Frameworks");
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shuichi.VibingSpeechTests;
@@ -428,9 +608,14 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_INTENTS_METADATA_GENERATION = NO;
 				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@loader_path/../Frameworks");
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shuichi.VibingSpeechTests;
@@ -446,9 +631,14 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_INTENTS_METADATA_GENERATION = NO;
 				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@loader_path/../Frameworks");
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shuichi.VibingSpeechUITests;
@@ -464,9 +654,14 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_INTENTS_METADATA_GENERATION = NO;
 				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@loader_path/../Frameworks");
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shuichi.VibingSpeechUITests;
@@ -480,19 +675,51 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		900000000000000000000001 /* Build configuration list for PBXProject "VibingSpeech" */ = {isa = XCConfigurationList; buildConfigurations = (900000000000000000000005, 900000000000000000000006); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		900000000000000000000002 /* Build configuration list for PBXNativeTarget "VibingSpeech" */ = {isa = XCConfigurationList; buildConfigurations = (900000000000000000000007, 900000000000000000000008); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		900000000000000000000003 /* Build configuration list for PBXNativeTarget "VibingSpeechTests" */ = {isa = XCConfigurationList; buildConfigurations = (900000000000000000000009, 90000000000000000000000A); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		900000000000000000000004 /* Build configuration list for PBXNativeTarget "VibingSpeechUITests" */ = {isa = XCConfigurationList; buildConfigurations = (90000000000000000000000B, 90000000000000000000000C); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		900000000000000000000001 /* Build configuration list for PBXProject "VibingSpeech" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				900000000000000000000005 /* Debug */,
+				900000000000000000000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		900000000000000000000002 /* Build configuration list for PBXNativeTarget "VibingSpeech" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				900000000000000000000007 /* Debug */,
+				900000000000000000000008 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		900000000000000000000003 /* Build configuration list for PBXNativeTarget "VibingSpeechTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				900000000000000000000009 /* Debug */,
+				90000000000000000000000A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		900000000000000000000004 /* Build configuration list for PBXNativeTarget "VibingSpeechUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				90000000000000000000000B /* Debug */,
+				90000000000000000000000C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		A00000000000000000000001 /* XCRemoteSwiftPackageReference "speech-swift" */ = {
+		A00000000000000000000001 /* XCRemoteSwiftPackageReference "mlx-audio-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/soniqo/speech-swift.git";
+			repositoryURL = "https://github.com/Blaizzy/mlx-audio-swift";
 			requirement = {
 				kind = exactVersion;
-				version = 0.0.21;
+				version = 0.1.3;
 			};
 		};
 		A00000000000000000000009 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
@@ -510,6 +737,8 @@
 				kind = exactVersion;
 				version = 0.9.0;
 			};
+			traits = (
+			);
 		};
 		A0000000000000000000000B /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -518,24 +747,16 @@
 				kind = exactVersion;
 				version = 1.3.3;
 			};
+			traits = (
+			);
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		A00000000000000000000002 /* Qwen3ASR */ = {
+		A00000000000000000000002 /* MLXAudioSTT */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000001 /* XCRemoteSwiftPackageReference "speech-swift" */;
-			productName = Qwen3ASR;
-		};
-		A00000000000000000000003 /* AudioCommon */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000001 /* XCRemoteSwiftPackageReference "speech-swift" */;
-			productName = AudioCommon;
-		};
-		A00000000000000000000004 /* SpeechVAD */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000001 /* XCRemoteSwiftPackageReference "speech-swift" */;
-			productName = SpeechVAD;
+			package = A00000000000000000000001 /* XCRemoteSwiftPackageReference "mlx-audio-swift" */;
+			productName = MLXAudioSTT;
 		};
 		A00000000000000000000005 /* MLXLLM */ = {
 			isa = XCSwiftPackageProductDependency;

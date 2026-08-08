@@ -40,7 +40,7 @@ VibingSpeech is a native macOS dictation utility for Apple Silicon Macs. It runs
 
 - Global recording hotkey with short-press toggle mode and long-press hold mode.
 - Floating recording overlay with live audio level feedback and transcription state.
-- Optional Live Transcription mode that shows partial and finalized ASR text in a separate overlay while recording, then still pastes only once when recording stops.
+- Optional Live Transcription mode that shows native streaming ASR text in a separate overlay while recording, then batch-transcribes the complete recording and pastes only once when recording stops.
 - Local ASR model selection for Qwen3-ASR 0.6B, 1.7B 4-bit, and 1.7B 8-bit MLX variants.
 - Optional local Text Processing (LLM) with typo correction, bullet-point formatting, or a custom prompt, powered by `mlx-community/Qwen3-4B-Instruct-2507-4bit`.
 - Core Audio microphone selection that applies the chosen input device to the recording engine instead of relying only on the system default.
@@ -56,8 +56,8 @@ VibingSpeech is a native macOS dictation utility for Apple Silicon Macs. It runs
 - SwiftUI and AppKit for the macOS app, menu-bar item, and recording overlay.
 - AVFoundation and Core Audio for microphone capture, device selection, and audio conversion.
 - Carbon and Core Graphics event taps for global hotkeys and simulated paste.
-- `speech-swift` `0.0.21` for Qwen3-ASR, audio support, and `SpeechVAD`-backed live transcription.
-- `mlx-swift-lm` `3.31.4` with `mlx-swift` `0.31.5`, `swift-huggingface` `0.9.0`, and `swift-transformers` `1.3.3` for local Qwen3 text processing.
+- `mlx-audio-swift` `0.1.3` with `mlx-swift` `0.31.6` for Qwen3-ASR batch inference and the review-only live transcription stream.
+- `mlx-swift-lm` `3.31.4` with the shared `mlx-swift` `0.31.6` runtime, `swift-huggingface` `0.9.0`, and `swift-transformers` `1.3.3` for local Qwen3 text processing.
 - ServiceManagement for Launch at Login.
 - JSON files in Application Support for local history and hotword persistence.
 
@@ -101,7 +101,7 @@ The Xcode project is the primary build path. SwiftPM-only release builds are int
 
 The default hotkey is Right Option. Escape cancels an active recording.
 
-When Live Transcription is enabled, VibingSpeech shows partial and finalized ASR text above the compact recording overlay while recording. It does not live-paste chunks into the target app; insertion still happens once, after recording stops and optional Text Processing has run on the complete transcript.
+When Live Transcription is enabled, VibingSpeech shows provisional and confirmed ASR text above the compact recording overlay while recording. That stream is review-only. After recording stops, VibingSpeech transcribes the complete 16 kHz recording in a separate batch pass, then runs optional Text Processing and inserts the result once. This preserves one Qwen3-ASR context for recordings up to 20 minutes; longer recordings are split internally by `mlx-audio-swift` at low-energy boundaries.
 
 Use Hotwords to maintain a local list of names and domain terms, History to search or copy saved dictations, and Other to configure appearance, launch-at-login, and model auto-unload timing.
 
@@ -111,6 +111,7 @@ Run the app unit tests with:
 
 ```sh
 xcodebuild -project VibingSpeech.xcodeproj \
+  -skipPackagePluginValidation \
   -scheme VibingSpeech \
   -configuration Debug \
   -destination 'platform=macOS,arch=arm64' \
@@ -124,9 +125,7 @@ The current tests cover model metadata, prompt generation, language normalizatio
 
 ## Archive
 
-Do not use the Xcode GUI Archive button while the app depends on `speech-swift`. Release package builds can compile `SpeechVAD` for x86_64 and fail on `Float16`.
-
-Use the archive script instead:
+Use the archive script so the Apple Silicon build settings and signing checks are applied consistently:
 
 ```sh
 ./script/archive.sh
@@ -171,7 +170,7 @@ If the hotkey does not work, enable VibingSpeech in System Settings > Privacy & 
 
 If the displayed microphone changes but recording still appears to use another device, stop any active recording and start a new one. VibingSpeech applies the selected Core Audio device when a recording session starts and reports an error if that device is unavailable or cannot be activated.
 
-If a recording starts and stops immediately, VibingSpeech discards audio that is too short for ASR instead of sending it to `speech-swift`.
+If a recording starts and stops immediately, VibingSpeech discards audio that is too short for Qwen3-ASR.
 
 If archive fails from Xcode's GUI, use `./script/archive.sh` from Terminal so the arm64-only package build settings are applied.
 
