@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Switched Qwen3-ASR downloads to the `mlx-community` MLX repositories for the 0.6B 8-bit, 1.7B 4-bit, and 1.7B 8-bit models, and refreshed their displayed download-size estimates.
 - Migrated ASR from `speech-swift` to `mlx-audio-swift` `0.1.3`, resolved the shared MLX runtime to `mlx-swift` `0.31.6`, removed app-level VAD segmentation, and preserved the existing Qwen3-ASR model selections.
 - Changed Live Transcription to use the native Qwen streaming session for the review overlay while always batch-transcribing the complete recording for the final LLM, paste, and history result.
 - Prevented cancellation during live-session drain, ASR, or LLM work from inserting or saving a late result.

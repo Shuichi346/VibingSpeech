@@ -17,17 +17,17 @@ enum ASRModelVariant: String, CaseIterable, Codable, Identifiable {
 
     var huggingFaceModelID: String {
         switch self {
-        case .qwen3_0_6b_8bit: "aufklarer/Qwen3-ASR-0.6B-MLX-8bit"
-        case .qwen3_1_7b_4bit: "aufklarer/Qwen3-ASR-1.7B-MLX-4bit"
-        case .qwen3_1_7b_8bit: "aufklarer/Qwen3-ASR-1.7B-MLX-8bit"
+        case .qwen3_0_6b_8bit: "mlx-community/Qwen3-ASR-0.6B-8bit"
+        case .qwen3_1_7b_4bit: "mlx-community/Qwen3-ASR-1.7B-4bit"
+        case .qwen3_1_7b_8bit: "mlx-community/Qwen3-ASR-1.7B-8bit"
         }
     }
 
     var estimatedDownloadSize: String {
         switch self {
         case .qwen3_0_6b_8bit: "~1.0 GB"
-        case .qwen3_1_7b_4bit: "~2.1 GB"
-        case .qwen3_1_7b_8bit: "~2.3 GB"
+        case .qwen3_1_7b_4bit: "~1.6 GB"
+        case .qwen3_1_7b_8bit: "~2.5 GB"
         }
     }
 
