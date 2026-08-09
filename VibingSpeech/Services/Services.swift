@@ -562,7 +562,7 @@ enum TextProcessingServiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .modelUnavailable:
-            "Qwen3 text processing is not linked or could not be loaded."
+            "Qwen3.5 text processing is not linked or could not be loaded."
         case .emptyPrompt:
             "A custom text processing prompt is required."
         case .emptyResult:
@@ -881,17 +881,20 @@ actor TextProcessingBackend {
         guard let modelContainer else { throw TextProcessingServiceError.modelUnavailable }
         let parameters = GenerateParameters(
             maxTokens: TextProcessingService.maxOutputTokens,
-            temperature: 0.7,
-            topP: 0.8,
-            topK: 20,
-            minP: 0
+            temperature: TextProcessingService.generationTemperature,
+            topP: TextProcessingService.generationTopP,
+            topK: TextProcessingService.generationTopK,
+            minP: TextProcessingService.generationMinP,
+            repetitionPenalty: TextProcessingService.generationRepetitionPenalty,
+            presencePenalty: TextProcessingService.generationPresencePenalty
         )
         let output: String
         do {
             let session = ChatSession(
                 modelContainer,
                 instructions: systemPrompt,
-                generateParameters: parameters
+                generateParameters: parameters,
+                additionalContext: TextProcessingService.chatTemplateContext
             )
             output = try await session.respond(to: text)
         } catch {
@@ -953,8 +956,15 @@ final class LaunchAtLoginService: ObservableObject {
 
 @MainActor
 final class TextProcessingService: ObservableObject {
-    nonisolated static let modelIdentifier = "mlx-community/Qwen3-4B-Instruct-2507-4bit"
+    nonisolated static let modelIdentifier = "mlx-community/Qwen3.5-4B-MLX-4bit"
     nonisolated static let maxOutputTokens = 16_384
+    nonisolated static let generationTemperature: Float = 0.7
+    nonisolated static let generationTopP: Float = 0.8
+    nonisolated static let generationTopK = 20
+    nonisolated static let generationMinP: Float = 0
+    nonisolated static let generationPresencePenalty: Float = 1.5
+    nonisolated static let generationRepetitionPenalty: Float = 1
+    nonisolated static let chatTemplateContext: [String: any Sendable] = ["enable_thinking": false]
 
     @Published private(set) var isReady = false
     @Published private(set) var isLoading = false

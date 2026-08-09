@@ -94,9 +94,16 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(buffer.snapshot, .empty)
     }
 
-    func testTextProcessingUsesQwen3Instruct2507Model() {
-        XCTAssertEqual(TextProcessingService.modelIdentifier, "mlx-community/Qwen3-4B-Instruct-2507-4bit")
+    func testTextProcessingUsesQwen35NonThinkingConfiguration() {
+        XCTAssertEqual(TextProcessingService.modelIdentifier, "mlx-community/Qwen3.5-4B-MLX-4bit")
         XCTAssertEqual(TextProcessingService.maxOutputTokens, 16_384)
+        XCTAssertEqual(TextProcessingService.generationTemperature, 0.7)
+        XCTAssertEqual(TextProcessingService.generationTopP, 0.8)
+        XCTAssertEqual(TextProcessingService.generationTopK, 20)
+        XCTAssertEqual(TextProcessingService.generationMinP, 0)
+        XCTAssertEqual(TextProcessingService.generationPresencePenalty, 1.5)
+        XCTAssertEqual(TextProcessingService.generationRepetitionPenalty, 1)
+        XCTAssertEqual(TextProcessingService.chatTemplateContext["enable_thinking"] as? Bool, false)
     }
 
     func testShortAudioIsRejectedBeforeASRModelUse() async {

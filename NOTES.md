@@ -1,5 +1,13 @@
 # Notes
 
+## 2026-08-09
+
+- Text Processing moved to `mlx-community/Qwen3.5-4B-MLX-4bit`. The pinned `mlx-swift-lm` `3.31.4` already supports the model's `qwen3_5` architecture.
+- `TextProcessingBackend` disables Qwen3.5 thinking by passing `enable_thinking=false` through `ChatSession.additionalContext`; the model's `chat_template.jinja` consumes that value and emits the non-thinking assistant prefix.
+- The model keeps `chat_template.jinja` separate from `tokenizer_config.json`. `mlx-swift-lm` includes `*.jinja` in its tokenizer download patterns, and `swift-transformers` merges the downloaded template into its in-memory tokenizer configuration.
+- Generation now preserves Qwen3.5's recommended general Instruct settings: `temperature=0.7`, `topP=0.8`, `topK=20`, `minP=0`, `presencePenalty=1.5`, and `repetitionPenalty=1.0`. No prompt-mode switches or response stripping are used.
+- The signing-disabled Debug test run passed all 20 tests, and the signing-disabled arm64 Release build passed.
+
 ## 2026-08-08
 
 - Qwen3-ASR repository IDs moved from `aufklarer` to the three supported `mlx-community` variants. The pinned `mlx-audio-swift` `0.1.3` loader already supports their config, tokenizer, quantization, and safetensors layout, so `ASRService` required no loading-path changes.

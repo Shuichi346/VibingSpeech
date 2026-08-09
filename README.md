@@ -42,7 +42,7 @@ VibingSpeech is a native macOS dictation utility for Apple Silicon Macs. It runs
 - Floating recording overlay with live audio level feedback and transcription state.
 - Optional Live Transcription mode that shows native streaming ASR text in a separate overlay while recording, then batch-transcribes the complete recording and pastes only once when recording stops.
 - Local ASR model selection for Qwen3-ASR 0.6B, 1.7B 4-bit, and 1.7B 8-bit MLX variants.
-- Optional local Text Processing (LLM) with typo correction, bullet-point formatting, or a custom prompt, powered by `mlx-community/Qwen3-4B-Instruct-2507-4bit`.
+- Optional local Text Processing (LLM) with typo correction, bullet-point formatting, or a custom prompt, powered by `mlx-community/Qwen3.5-4B-MLX-4bit` in non-thinking mode.
 - Core Audio microphone selection that applies the chosen input device to the recording engine instead of relying only on the system default.
 - Local hotword manager for names, terms, and proper nouns.
 - Local transcription history with retention settings, search, copy, delete, clear, and original-ASR copy actions.
