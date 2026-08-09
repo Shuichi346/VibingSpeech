@@ -11,6 +11,27 @@ ARCHIVE_PATH="$BUILD_DIR/$APP_NAME.xcarchive"
 APP_PATH="$BUILD_DIR/$APP_NAME.app"
 APP_ENTITLEMENTS="$ROOT_DIR/VibingSpeech/Resources/VibingSpeech.entitlements"
 
+RESOLVED_BUILD_SETTINGS="$(
+  /usr/bin/xcodebuild \
+    -project "$PROJECT" \
+    -scheme "$SCHEME" \
+    -configuration "$CONFIGURATION" \
+    -showBuildSettings
+)"
+EXPECTED_MARKETING_VERSION="$(
+  /usr/bin/printf '%s\n' "$RESOLVED_BUILD_SETTINGS" \
+    | /usr/bin/awk '$1 == "MARKETING_VERSION" && $2 == "=" { print $3; exit }'
+)"
+EXPECTED_BUILD_VERSION="$(
+  /usr/bin/printf '%s\n' "$RESOLVED_BUILD_SETTINGS" \
+    | /usr/bin/awk '$1 == "CURRENT_PROJECT_VERSION" && $2 == "=" { print $3; exit }'
+)"
+
+if [[ -z "$EXPECTED_MARKETING_VERSION" || -z "$EXPECTED_BUILD_VERSION" ]]; then
+  echo "ERROR: Unable to resolve the Xcode Version and Build settings." >&2
+  exit 1
+fi
+
 mkdir -p "$BUILD_DIR"
 rm -rf "$ARCHIVE_PATH" "$APP_PATH"
 
@@ -31,6 +52,24 @@ rm -rf "$ARCHIVE_PATH" "$APP_PATH"
   CODE_SIGNING_ALLOWED=NO
 
 cp -R "$ARCHIVE_PATH/Products/Applications/$APP_NAME.app" "$APP_PATH"
+
+INFO_PLIST="$APP_PATH/Contents/Info.plist"
+ACTUAL_MARKETING_VERSION="$(
+  /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST"
+)"
+ACTUAL_BUILD_VERSION="$(
+  /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO_PLIST"
+)"
+
+if [[ "$ACTUAL_MARKETING_VERSION" != "$EXPECTED_MARKETING_VERSION" ]]; then
+  echo "ERROR: Archive Version is $ACTUAL_MARKETING_VERSION; expected $EXPECTED_MARKETING_VERSION from Xcode." >&2
+  exit 1
+fi
+
+if [[ "$ACTUAL_BUILD_VERSION" != "$EXPECTED_BUILD_VERSION" ]]; then
+  echo "ERROR: Archive Build is $ACTUAL_BUILD_VERSION; expected $EXPECTED_BUILD_VERSION from Xcode." >&2
+  exit 1
+fi
 
 # Strip any existing partial signatures (ignore if none exist)
 find "$APP_PATH" -type f \( -name "*.dylib" -o -name "*.so" \) -print0 \
@@ -75,4 +114,4 @@ fi
 # Strip quarantine for manual distribution (optional)
 xattr -dr com.apple.quarantine "$APP_PATH" 2>/dev/null || true
 
-echo "Build complete: $APP_PATH"
+echo "Build complete: $APP_PATH ($ACTUAL_MARKETING_VERSION, build $ACTUAL_BUILD_VERSION)"

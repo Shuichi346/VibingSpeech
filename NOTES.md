@@ -2,6 +2,7 @@
 
 ## 2026-08-09
 
+- `script/archive.sh` now resolves both Xcode settings before archiving and rejects a copied `.app` whose embedded Version or Build differs. `Info.plist` continues to expand `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` into the bundle version keys.
 - Text Processing moved to `mlx-community/Qwen3.5-4B-MLX-4bit`. The pinned `mlx-swift-lm` `3.31.4` already supports the model's `qwen3_5` architecture.
 - `TextProcessingBackend` disables Qwen3.5 thinking by passing `enable_thinking=false` through `ChatSession.additionalContext`; the model's `chat_template.jinja` consumes that value and emits the non-thinking assistant prefix.
 - The model keeps `chat_template.jinja` separate from `tokenizer_config.json`. `mlx-swift-lm` includes `*.jinja` in its tokenizer download patterns, and `swift-transformers` merges the downloaded template into its in-memory tokenizer configuration.
