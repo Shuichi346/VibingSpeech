@@ -80,6 +80,8 @@ final class AppCoordinator: ObservableObject {
     private var modelUnloadTask: Task<Void, Never>?
     private var appearanceModeCancellable: AnyCancellable?
     private var liveTranscriptionActive = false
+    private var recordingOperationID: UUID?
+    private var recordingStartupInProgress = false
 
     init() {
         appearanceService.apply(settings.appearanceMode)
@@ -187,7 +189,9 @@ final class AppCoordinator: ObservableObject {
     }
 
     func beginRecording() async {
-        guard phase == .idle else { return }
+        guard phase == .idle, !recordingStartupInProgress else { return }
+        recordingStartupInProgress = true
+        defer { recordingStartupInProgress = false }
         cancelModelUnloadTimer()
         guard permissions.microphoneGranted else {
             lastError = "Microphone permission is required."
@@ -203,6 +207,8 @@ final class AppCoordinator: ObservableObject {
             return
         }
 
+        let operationID = UUID()
+        recordingOperationID = operationID
         let shouldUseLiveTranscription = settings.liveTranscriptionEnabled
         liveTranscriptionActive = false
         overlayState.resetLiveTranscript(visible: shouldUseLiveTranscription)
@@ -211,14 +217,20 @@ final class AppCoordinator: ObservableObject {
                 let overlayState = self.overlayState
                 try await asrService.startLiveTranscription(
                     languageMode: settings.languageMode,
-                    onUpdate: { snapshot in
-                        Task { @MainActor in
+                    onUpdate: { [weak self] snapshot in
+                        Task { @MainActor [weak self] in
+                            guard self?.isCurrentRecordingOperation(operationID) == true else { return }
                             overlayState.applyLiveTranscript(snapshot)
                         }
                     }
                 )
+                guard isCurrentRecordingOperation(operationID) else {
+                    await asrService.cancelLiveTranscription()
+                    return
+                }
                 liveTranscriptionActive = true
             } catch {
+                guard isCurrentRecordingOperation(operationID) else { return }
                 overlayState.resetLiveTranscript(visible: false)
                 lastError = "Live transcription unavailable: \(error.localizedDescription)"
             }
@@ -241,10 +253,10 @@ final class AppCoordinator: ObservableObject {
                 soundService.playStart()
             }
         } catch {
-            if liveTranscriptionActive {
-                await asrService.cancelLiveTranscription()
-                liveTranscriptionActive = false
-            }
+            await asrService.cancelLiveTranscription()
+            guard isCurrentRecordingOperation(operationID) else { return }
+            liveTranscriptionActive = false
+            recordingOperationID = nil
             overlayState.resetLiveTranscript(visible: false)
             lastError = error.localizedDescription
             scheduleModelUnloadIfNeeded()
@@ -252,7 +264,7 @@ final class AppCoordinator: ObservableObject {
     }
 
     func finishRecordingAndTranscribe() async {
-        guard phase == .recording else { return }
+        guard phase == .recording, let operationID = recordingOperationID else { return }
         let wasLiveTranscriptionActive = liveTranscriptionActive
         let capture = microphoneRecorder.stop()
         liveTranscriptionActive = false
@@ -264,18 +276,15 @@ final class AppCoordinator: ObservableObject {
             phase = .transcribing
             overlayState.phase = .transcribing
 
-            let liveResult = await asrService.finishLiveTranscription()
-            if let liveResult {
-                overlayState.applyLiveTranscript(
-                    LiveTranscriptSnapshot(
-                        finalizedText: liveResult.text,
-                        partialText: "",
-                        statusMessage: nil
-                    )
+            await asrService.finishLiveTranscription()
+            guard isCurrentRecordingOperation(operationID) else { return }
+            if capture.samples.count >= MicrophoneRecorder.minimumSamplesForASR {
+                await transcribeBatchAndCommit(
+                    samples: capture.samples,
+                    duration: capture.duration,
+                    operationID: operationID
                 )
-                await processAndCommit(asrResult: liveResult, duration: capture.duration)
-            } else if capture.samples.count >= MicrophoneRecorder.minimumSamplesForASR {
-                await transcribeBatchAndCommit(samples: capture.samples, duration: capture.duration)
+                guard isCurrentRecordingOperation(operationID) else { return }
             } else {
                 lastError = nil
             }
@@ -284,6 +293,7 @@ final class AppCoordinator: ObservableObject {
             overlayState.resetLiveTranscript(visible: false)
             overlayController?.hide()
             phase = .idle
+            recordingOperationID = nil
             scheduleModelUnloadIfNeeded()
             return
         }
@@ -293,6 +303,7 @@ final class AppCoordinator: ObservableObject {
             overlayState.phase = .idle
             overlayController?.hide()
             lastError = nil
+            recordingOperationID = nil
             scheduleModelUnloadIfNeeded()
             return
         }
@@ -300,24 +311,42 @@ final class AppCoordinator: ObservableObject {
         phase = .transcribing
         overlayState.phase = .transcribing
 
-        await transcribeBatchAndCommit(samples: capture.samples, duration: capture.duration)
+        await transcribeBatchAndCommit(
+            samples: capture.samples,
+            duration: capture.duration,
+            operationID: operationID
+        )
+        guard isCurrentRecordingOperation(operationID) else { return }
 
         phase = .idle
         overlayState.phase = .idle
         overlayController?.hide()
+        recordingOperationID = nil
         scheduleModelUnloadIfNeeded()
     }
 
-    private func transcribeBatchAndCommit(samples: [Float], duration: Double) async {
+    private func transcribeBatchAndCommit(
+        samples: [Float],
+        duration: Double,
+        operationID: UUID
+    ) async {
         do {
             let asrResult = try await asrService.transcribe(samples: samples, languageMode: settings.languageMode)
-            await processAndCommit(asrResult: asrResult, duration: duration)
+            guard isCurrentRecordingOperation(operationID) else { return }
+            await processAndCommit(asrResult: asrResult, duration: duration, operationID: operationID)
+            guard isCurrentRecordingOperation(operationID) else { return }
         } catch {
+            guard isCurrentRecordingOperation(operationID) else { return }
             lastError = error.localizedDescription
         }
     }
 
-    private func processAndCommit(asrResult: ASRResult, duration: Double) async {
+    private func processAndCommit(
+        asrResult: ASRResult,
+        duration: Double,
+        operationID: UUID
+    ) async {
+        guard isCurrentRecordingOperation(operationID) else { return }
         let finalText: String
         let originalText: String?
         let processedByLLM: Bool
@@ -332,9 +361,11 @@ final class AppCoordinator: ObservableObject {
                     language: settings.languageMode,
                     detectedLanguage: asrResult.detectedLanguage
                 )
+                guard isCurrentRecordingOperation(operationID) else { return }
                 originalText = asrResult.text
                 processedByLLM = true
             } catch {
+                guard isCurrentRecordingOperation(operationID) else { return }
                 finalText = asrResult.text
                 originalText = nil
                 processedByLLM = false
@@ -346,7 +377,9 @@ final class AppCoordinator: ObservableObject {
             processedByLLM = false
         }
 
+        guard isCurrentRecordingOperation(operationID) else { return }
         textInsertionService.insert(finalText)
+        guard isCurrentRecordingOperation(operationID) else { return }
         let record = TranscriptionRecord(
             finalText: finalText,
             originalASRText: originalText,
@@ -360,11 +393,10 @@ final class AppCoordinator: ObservableObject {
 
     func cancelRecording() async {
         guard phase != .idle else { return }
+        recordingOperationID = nil
         microphoneRecorder.cancel()
-        if liveTranscriptionActive {
-            await asrService.cancelLiveTranscription()
-            liveTranscriptionActive = false
-        }
+        liveTranscriptionActive = false
+        await asrService.cancelLiveTranscription()
         phase = .idle
         overlayState.phase = .idle
         overlayState.resetLiveTranscript(visible: false)
@@ -373,6 +405,10 @@ final class AppCoordinator: ObservableObject {
             soundService.playCancel()
         }
         scheduleModelUnloadIfNeeded()
+    }
+
+    private func isCurrentRecordingOperation(_ operationID: UUID) -> Bool {
+        recordingOperationID == operationID
     }
 
     func setTextProcessingEnabled(_ enabled: Bool) {

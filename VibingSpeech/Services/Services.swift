@@ -6,18 +6,16 @@ import CoreAudio
 import Foundation
 import ServiceManagement
 
-#if canImport(Qwen3ASR)
-import AudioCommon
-import Qwen3ASR
+#if canImport(MLX)
+import MLX
 #endif
 
-#if canImport(SpeechVAD)
-@preconcurrency import SpeechVAD
+#if canImport(MLXAudioSTT)
+import MLXAudioSTT
 #endif
 
 #if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
 import HuggingFace
-import MLX
 import MLXLLM
 import MLXLMCommon
 import Tokenizers
@@ -564,7 +562,7 @@ enum TextProcessingServiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .modelUnavailable:
-            "Qwen3 text processing is not linked or could not be loaded."
+            "Qwen3.5 text processing is not linked or could not be loaded."
         case .emptyPrompt:
             "A custom text processing prompt is required."
         case .emptyResult:
@@ -663,136 +661,59 @@ private struct TextProcessingTokenizer: MLXLMCommon.Tokenizer {
 }
 #endif
 
-#if canImport(Qwen3ASR) && canImport(SpeechVAD)
-private final class LiveASRSession {
-    private static let sampleRate = 16_000
-    private static let maxSegmentDuration: Float = 10.0
-    private static let partialInterval: Float = 1.0
-    private static let initialPartialDelay: Float = 0.8
-
-    private let model: Qwen3ASRModel
-    private let processor: StreamingVADProcessor
-    private let languageHint: String?
-    private let onUpdate: @Sendable (LiveTranscriptSnapshot) -> Void
-
-    private var allSamples: [Float] = []
-    private var speechStartSample: Int?
-    private var lastPartialTime: Float = 0
-    private var buffer = LiveTranscriptBuffer()
-    private var detectedLanguage: String?
+#if canImport(MLX) && canImport(MLXAudioSTT)
+private final class LiveASRSession: @unchecked Sendable {
+    private let session: StreamingInferenceSession
+    private let eventConsumer: Task<Void, Never>
 
     init(
         model: Qwen3ASRModel,
-        vadModel: SileroVADModel,
         languageHint: String?,
         onUpdate: @escaping @Sendable (LiveTranscriptSnapshot) -> Void
     ) {
-        self.model = model
-        self.languageHint = languageHint
-        self.onUpdate = onUpdate
-        let base = VADConfig.sileroDefault
-        let vadConfig = VADConfig(
-            onset: base.onset,
-            offset: base.offset,
-            minSpeechDuration: base.minSpeechDuration,
-            minSilenceDuration: 0.6,
-            windowDuration: base.windowDuration,
-            stepRatio: base.stepRatio
+        let session = StreamingInferenceSession(
+            model: model,
+            config: StreamingConfig(language: languageHint)
         )
-        processor = StreamingVADProcessor(model: vadModel, config: vadConfig)
-        buffer.setStatus("Listening...")
-        emitUpdate()
-    }
-
-    func ingest(samples: [Float]) {
-        guard !samples.isEmpty else { return }
-        allSamples.append(contentsOf: samples)
-        handle(events: processor.process(samples: samples))
-        updatePartialIfNeeded()
-        finalizeLongSpeechIfNeeded()
-    }
-
-    func finish() -> ASRResult? {
-        handle(events: processor.flush())
-        if let speechStartSample, speechStartSample < allSamples.count {
-            finalizeSegment(startSample: speechStartSample, endSample: allSamples.count)
-            self.speechStartSample = nil
-        }
-        buffer.commitPartialIfNeeded()
-        emitUpdate()
-        let text = buffer.finalizedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return nil }
-        return ASRResult(text: text, detectedLanguage: languageHint ?? detectedLanguage)
-    }
-
-    func cancel() {
-        processor.reset()
-        allSamples = []
-        speechStartSample = nil
-        buffer.reset()
-        emitUpdate()
-    }
-
-    private func handle(events: [VADEvent]) {
-        for event in events {
-            switch event {
-            case .speechStarted(let time):
-                speechStartSample = min(Int(time * Float(Self.sampleRate)), allSamples.count)
-                lastPartialTime = time - (Self.partialInterval - Self.initialPartialDelay)
-                buffer.setStatus(nil)
-                emitUpdate()
-            case .speechEnded(let segment):
-                guard let startSample = speechStartSample else { continue }
-                let endSample = min(Int(segment.endTime * Float(Self.sampleRate)), allSamples.count)
-                finalizeSegment(startSample: startSample, endSample: endSample)
-                speechStartSample = nil
+        self.session = session
+        onUpdate(LiveTranscriptSnapshot(finalizedText: "", partialText: "", statusMessage: "Listening..."))
+        eventConsumer = Task {
+            for await event in session.events {
+                Self.handle(event, onUpdate: onUpdate)
             }
         }
     }
 
-    private func updatePartialIfNeeded() {
-        guard let speechStartSample else { return }
-        let currentTime = processor.currentTime
-        guard currentTime - lastPartialTime >= Self.partialInterval else { return }
-        let endSample = min(Int(currentTime * Float(Self.sampleRate)), allSamples.count)
-        guard endSample > speechStartSample else {
-            lastPartialTime = currentTime
-            return
+    func ingest(samples: [Float]) {
+        guard !samples.isEmpty else { return }
+        session.feedAudio(samples: samples)
+    }
+
+    func finish() async {
+        session.stop()
+        await eventConsumer.value
+    }
+
+    private static func handle(
+        _ event: TranscriptionEvent,
+        onUpdate: @escaping @Sendable (LiveTranscriptSnapshot) -> Void
+    ) {
+        switch event {
+        case .displayUpdate(let confirmedText, let provisionalText):
+            onUpdate(LiveTranscriptSnapshot(
+                finalizedText: confirmedText,
+                partialText: provisionalText,
+                statusMessage: nil
+            ))
+        case .confirmed(let text):
+            onUpdate(LiveTranscriptSnapshot(finalizedText: text, partialText: "", statusMessage: nil))
+        case .provisional(let text):
+            onUpdate(LiveTranscriptSnapshot(finalizedText: "", partialText: text, statusMessage: nil))
+        case .ended(let fullText):
+            onUpdate(LiveTranscriptSnapshot(finalizedText: fullText, partialText: "", statusMessage: nil))
+        case .stats:
+            break
         }
-        let result = transcribe(startSample: speechStartSample, endSample: endSample)
-        buffer.updatePartial(result.text)
-        lastPartialTime = currentTime
-        emitUpdate()
-    }
-
-    private func finalizeLongSpeechIfNeeded() {
-        guard let speechStartSample else { return }
-        let currentTime = processor.currentTime
-        let speechStartTime = Float(speechStartSample) / Float(Self.sampleRate)
-        guard currentTime - speechStartTime >= Self.maxSegmentDuration else { return }
-        let endSample = min(Int(currentTime * Float(Self.sampleRate)), allSamples.count)
-        finalizeSegment(startSample: speechStartSample, endSample: endSample)
-        self.speechStartSample = endSample
-        lastPartialTime = currentTime
-    }
-
-    private func finalizeSegment(startSample: Int, endSample: Int) {
-        guard endSample > startSample else { return }
-        let result = transcribe(startSample: startSample, endSample: endSample)
-        buffer.commitFinal(result.text)
-        if detectedLanguage == nil {
-            detectedLanguage = result.language
-        }
-        emitUpdate()
-    }
-
-    private func transcribe(startSample: Int, endSample: Int) -> TranscriptionResult {
-        let audio = Array(allSamples[startSample..<endSample])
-        return model.transcribeWithLanguage(audio: audio, sampleRate: Self.sampleRate, language: languageHint)
-    }
-
-    private func emitUpdate() {
-        onUpdate(buffer.snapshot)
     }
 }
 #endif
@@ -801,27 +722,30 @@ actor ASRService {
     private(set) var loadedVariant: ASRModelVariant?
     private var loadRequestID = UUID()
 
-    #if canImport(Qwen3ASR)
+    #if canImport(MLX) && canImport(MLXAudioSTT)
     private var model: Qwen3ASRModel?
     #endif
 
-    #if canImport(Qwen3ASR) && canImport(SpeechVAD)
-    private var vadModel: SileroVADModel?
+    #if canImport(MLX) && canImport(MLXAudioSTT)
     private var liveSession: LiveASRSession?
+    private var liveSessionRequestID = UUID()
     #endif
 
     func load(variant: ASRModelVariant) async throws {
-        #if canImport(Qwen3ASR)
+        #if canImport(MLX) && canImport(MLXAudioSTT)
         if loadedVariant == variant, model != nil { return }
         let requestID = UUID()
         loadRequestID = requestID
-        unloadLoadedModels()
-        let loadedModel = try await Qwen3ASRModel.fromPretrained(modelId: variant.huggingFaceModelID)
+        liveSessionRequestID = UUID()
+        await unloadLoadedModels()
+        var loadedModel: Qwen3ASRModel? = try await Qwen3ASRModel.fromPretrained(variant.huggingFaceModelID)
         guard loadRequestID == requestID else {
-            loadedModel.unload()
+            loadedModel = nil
+            MLX.Memory.clearCache()
             return
         }
         model = loadedModel
+        loadedModel = nil
         loadedVariant = variant
         #else
         loadedVariant = nil
@@ -829,21 +753,25 @@ actor ASRService {
         #endif
     }
 
-    func unload() {
+    func unload() async {
         loadRequestID = UUID()
-        unloadLoadedModels()
+        #if canImport(MLX) && canImport(MLXAudioSTT)
+        liveSessionRequestID = UUID()
+        #endif
+        await unloadLoadedModels()
     }
 
-    private func unloadLoadedModels() {
-        #if canImport(Qwen3ASR)
-        #if canImport(SpeechVAD)
-        liveSession?.cancel()
-        liveSession = nil
-        vadModel?.unload()
-        vadModel = nil
-        #endif
-        model?.unload()
+    private func unloadLoadedModels() async {
+        #if canImport(MLX) && canImport(MLXAudioSTT)
+        let sessionToFinish = liveSession
         model = nil
+        if let sessionToFinish {
+            await sessionToFinish.finish()
+            if liveSession === sessionToFinish {
+                liveSession = nil
+            }
+        }
+        MLX.Memory.clearCache()
         #endif
         loadedVariant = nil
     }
@@ -852,16 +780,22 @@ actor ASRService {
         languageMode: LanguageMode,
         onUpdate: @escaping @Sendable (LiveTranscriptSnapshot) -> Void
     ) async throws {
-        #if canImport(Qwen3ASR) && canImport(SpeechVAD)
+        #if canImport(MLX) && canImport(MLXAudioSTT)
+        let requestID = UUID()
+        liveSessionRequestID = requestID
         guard let model else { throw ASRServiceError.modelUnavailable }
-        if vadModel == nil {
-            vadModel = try await SileroVADModel.fromPretrained()
+        if let sessionToFinish = liveSession {
+            await sessionToFinish.finish()
+            guard liveSessionRequestID == requestID else { throw CancellationError() }
+            if liveSession === sessionToFinish {
+                liveSession = nil
+            } else if liveSession != nil {
+                throw CancellationError()
+            }
         }
-        guard let vadModel else { throw ASRServiceError.modelUnavailable }
-        vadModel.resetState()
+        guard liveSessionRequestID == requestID else { throw CancellationError() }
         liveSession = LiveASRSession(
             model: model,
-            vadModel: vadModel,
             languageHint: languageMode.asrLanguageHint,
             onUpdate: onUpdate
         )
@@ -871,33 +805,41 @@ actor ASRService {
     }
 
     func ingestLiveSamples(_ samples: [Float]) {
-        #if canImport(Qwen3ASR) && canImport(SpeechVAD)
+        #if canImport(MLX) && canImport(MLXAudioSTT)
         liveSession?.ingest(samples: samples)
         #endif
     }
 
-    func finishLiveTranscription() -> ASRResult? {
-        #if canImport(Qwen3ASR) && canImport(SpeechVAD)
-        defer { liveSession = nil }
-        return liveSession?.finish()
-        #else
-        return nil
+    func finishLiveTranscription() async {
+        #if canImport(MLX) && canImport(MLXAudioSTT)
+        liveSessionRequestID = UUID()
+        if let sessionToFinish = liveSession {
+            await sessionToFinish.finish()
+            if liveSession === sessionToFinish {
+                liveSession = nil
+            }
+        }
         #endif
     }
 
-    func cancelLiveTranscription() {
-        #if canImport(Qwen3ASR) && canImport(SpeechVAD)
-        liveSession?.cancel()
-        liveSession = nil
+    func cancelLiveTranscription() async {
+        #if canImport(MLX) && canImport(MLXAudioSTT)
+        liveSessionRequestID = UUID()
+        if let sessionToFinish = liveSession {
+            await sessionToFinish.finish()
+            if liveSession === sessionToFinish {
+                liveSession = nil
+            }
+        }
         #endif
     }
 
     func transcribe(samples: [Float], languageMode: LanguageMode) async throws -> ASRResult {
         guard samples.count >= MicrophoneRecorder.minimumSamplesForASR else { throw ASRServiceError.shortAudio }
-        #if canImport(Qwen3ASR)
+        #if canImport(MLX) && canImport(MLXAudioSTT)
         guard let model else { throw ASRServiceError.modelUnavailable }
         let languageHint = languageMode.asrLanguageHint
-        let transcription = model.transcribeWithLanguage(audio: samples, sampleRate: 16_000, language: languageHint)
+        let transcription = model.generate(audio: MLXArray(samples), language: languageHint)
         let text = transcription.text
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw ASRServiceError.emptyResult }
@@ -939,17 +881,20 @@ actor TextProcessingBackend {
         guard let modelContainer else { throw TextProcessingServiceError.modelUnavailable }
         let parameters = GenerateParameters(
             maxTokens: TextProcessingService.maxOutputTokens,
-            temperature: 0.7,
-            topP: 0.8,
-            topK: 20,
-            minP: 0
+            temperature: TextProcessingService.generationTemperature,
+            topP: TextProcessingService.generationTopP,
+            topK: TextProcessingService.generationTopK,
+            minP: TextProcessingService.generationMinP,
+            repetitionPenalty: TextProcessingService.generationRepetitionPenalty,
+            presencePenalty: TextProcessingService.generationPresencePenalty
         )
         let output: String
         do {
             let session = ChatSession(
                 modelContainer,
                 instructions: systemPrompt,
-                generateParameters: parameters
+                generateParameters: parameters,
+                additionalContext: TextProcessingService.chatTemplateContext
             )
             output = try await session.respond(to: text)
         } catch {
@@ -1011,8 +956,15 @@ final class LaunchAtLoginService: ObservableObject {
 
 @MainActor
 final class TextProcessingService: ObservableObject {
-    nonisolated static let modelIdentifier = "mlx-community/Qwen3-4B-Instruct-2507-4bit"
+    nonisolated static let modelIdentifier = "mlx-community/Qwen3.5-4B-MLX-4bit"
     nonisolated static let maxOutputTokens = 16_384
+    nonisolated static let generationTemperature: Float = 0.7
+    nonisolated static let generationTopP: Float = 0.8
+    nonisolated static let generationTopK = 20
+    nonisolated static let generationMinP: Float = 0
+    nonisolated static let generationPresencePenalty: Float = 1.5
+    nonisolated static let generationRepetitionPenalty: Float = 1
+    nonisolated static let chatTemplateContext: [String: any Sendable] = ["enable_thinking": false]
 
     @Published private(set) var isReady = false
     @Published private(set) var isLoading = false

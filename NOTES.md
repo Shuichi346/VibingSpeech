@@ -1,5 +1,25 @@
 # Notes
 
+## 2026-08-09
+
+- `script/archive.sh` now resolves both Xcode settings before archiving and rejects a copied `.app` whose embedded Version or Build differs. `Info.plist` continues to expand `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` into the bundle version keys.
+- Text Processing moved to `mlx-community/Qwen3.5-4B-MLX-4bit`. The pinned `mlx-swift-lm` `3.31.4` already supports the model's `qwen3_5` architecture.
+- `TextProcessingBackend` disables Qwen3.5 thinking by passing `enable_thinking=false` through `ChatSession.additionalContext`; the model's `chat_template.jinja` consumes that value and emits the non-thinking assistant prefix.
+- The model keeps `chat_template.jinja` separate from `tokenizer_config.json`. `mlx-swift-lm` includes `*.jinja` in its tokenizer download patterns, and `swift-transformers` merges the downloaded template into its in-memory tokenizer configuration.
+- Generation now preserves Qwen3.5's recommended general Instruct settings: `temperature=0.7`, `topP=0.8`, `topK=20`, `minP=0`, `presencePenalty=1.5`, and `repetitionPenalty=1.0`. No prompt-mode switches or response stripping are used.
+- The signing-disabled Debug test run passed all 20 tests, and the signing-disabled arm64 Release build passed.
+
+## 2026-08-08
+
+- Qwen3-ASR repository IDs moved from `aufklarer` to the three supported `mlx-community` variants. The pinned `mlx-audio-swift` `0.1.3` loader already supports their config, tokenizer, quantization, and safetensors layout, so `ASRService` required no loading-path changes.
+- Changing the Hugging Face repository IDs causes the `mlx-community` snapshots to download into separate cache entries; existing `aufklarer` snapshots are neither reused nor removed automatically.
+- The ASR backend was migrated from `speech-swift` `0.0.21` to `mlx-audio-swift` `0.1.3` after reading tag `v0.1.3` source at commit `d302a5c6080d2bb97bae38c7418f82abb76013b6`; the app now links `MLXAudioSTT` and preserves the existing Qwen3-ASR selections and persisted variant values.
+- App-level VAD was removed. The native `StreamingInferenceSession` now drives only the review overlay, is stopped and drained before model reuse, and its text is discarded; the complete mono 16 kHz capture is always passed separately to `Qwen3ASRModel.generate` for the final result.
+- Full-buffer generation preserves one Qwen3-ASR context up to the library's 1,200-second default. Longer recordings are independently split at low-energy boundaries by `mlx-audio-swift`, with no transcript context carried across those splits.
+- ASR unload now drains live inference, releases Swift model references, and clears `MLX.Memory` because `mlx-audio-swift` `0.1.3` does not expose `Qwen3ASRModel.unload()`. Recording-operation generation checks prevent canceling during live drain, ASR, or LLM work from producing a late paste or history record.
+- `mlx-swift` was updated to `0.31.6` at revision `0bb916c67f4b9e5c682cbe02a42c701c93ab5021`. The existing constraints in `mlx-audio-swift` `0.1.3` and `mlx-swift-lm` `3.31.4` both accept that version.
+- `xcodebuild -quiet -skipPackagePluginValidation -project VibingSpeech.xcodeproj -scheme VibingSpeech -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO test` passed all 20 tests, and the matching signing-disabled Release build passed. The skip flag accepted the official package's changed build-plugin fingerprint in the noninteractive build.
+
 ## 2026-07-01
 
 - Release notes were checked before updating pins. `speech-swift` `0.0.20` and `0.0.21` focus on Nemotron/Parakeet/CoreML ASR additions and performance fixes; the app-used `Qwen3ASRModel.fromPretrained`, `transcribeWithLanguage`, `SileroVADModel`, `VADConfig`, and `StreamingVADProcessor` APIs remain compatible.
