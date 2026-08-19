@@ -12,6 +12,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await coordinator.startup()
         }
     }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        coordinator.refreshPermissions()
+    }
 }
 
 @main
@@ -40,11 +44,18 @@ struct VibingSpeechApp: App {
                     Task { await coordinator.beginRecording() }
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
+                .disabled(coordinator.phase != .idle)
+
+                Button("Stop Recording") {
+                    Task { await coordinator.finishRecordingAndTranscribe() }
+                }
+                .disabled(coordinator.phase != .recording)
 
                 Button("Cancel Recording") {
                     Task { await coordinator.cancelRecording() }
                 }
                 .keyboardShortcut(.escape, modifiers: [])
+                .disabled(coordinator.phase == .idle)
             }
         }
     }
@@ -77,11 +88,13 @@ final class AppCoordinator: ObservableObject {
     private var overlayController: RecordingOverlayController?
     private var startupStarted = false
     private var asrLoadGeneration = UUID()
+    private var modelUnloadGeneration = UUID()
     private var modelUnloadTask: Task<Void, Never>?
     private var appearanceModeCancellable: AnyCancellable?
     private var liveTranscriptionActive = false
     private var recordingOperationID: UUID?
     private var recordingStartupInProgress = false
+    private let isUITesting = ProcessInfo.processInfo.arguments.contains("--ui-testing")
 
     init() {
         appearanceService.apply(settings.appearanceMode)
@@ -117,6 +130,8 @@ final class AppCoordinator: ObservableObject {
             quit: { NSApp.terminate(nil) }
         )
         overlayController = RecordingOverlayController(state: overlayState)
+        guard !isUITesting else { return }
+        await history.load(retention: settings.historyRetention)
 
         microphoneRecorder.onRMSLevel = { [weak self] level in
             self?.overlayState.rmsLevel = level
@@ -162,9 +177,13 @@ final class AppCoordinator: ObservableObject {
         configureHotkey()
     }
 
+    func refreshPermissions() {
+        permissions.refresh()
+    }
+
     func loadASRModel() async {
-        guard phase == .idle else { return }
-        cancelModelUnloadTimer()
+        guard phase == .idle || phase == .starting else { return }
+        await cancelModelUnloadAndWait()
         let variant = settings.asrModelVariant
         let generation = UUID()
         asrLoadGeneration = generation
@@ -190,25 +209,41 @@ final class AppCoordinator: ObservableObject {
 
     func beginRecording() async {
         guard phase == .idle, !recordingStartupInProgress else { return }
+        let operationID = UUID()
+        recordingOperationID = operationID
         recordingStartupInProgress = true
-        defer { recordingStartupInProgress = false }
-        cancelModelUnloadTimer()
+        phase = .starting
+        defer {
+            recordingStartupInProgress = false
+            if phase == .starting, isCurrentRecordingOperation(operationID) {
+                recordingOperationID = nil
+                phase = .idle
+                overlayState.phase = .idle
+                overlayState.resetLiveTranscript(visible: false)
+                overlayController?.hide()
+            }
+            if phase == .idle {
+                scheduleModelUnloadIfNeeded()
+            }
+        }
+
+        await cancelModelUnloadAndWait()
+        guard isCurrentRecordingOperation(operationID) else { return }
+        permissions.refresh()
         guard permissions.microphoneGranted else {
             lastError = "Microphone permission is required."
-            scheduleModelUnloadIfNeeded()
             return
         }
         if !asrModelLoaded {
             await loadASRModel()
-            cancelModelUnloadTimer()
+            guard isCurrentRecordingOperation(operationID) else { return }
+            await cancelModelUnloadAndWait()
         }
         guard asrModelLoaded else {
             lastError = asrStatusMessage
             return
         }
 
-        let operationID = UUID()
-        recordingOperationID = operationID
         let shouldUseLiveTranscription = settings.liveTranscriptionEnabled
         liveTranscriptionActive = false
         overlayState.resetLiveTranscript(visible: shouldUseLiveTranscription)
@@ -236,15 +271,24 @@ final class AppCoordinator: ObservableObject {
             }
         }
 
+        guard isCurrentRecordingOperation(operationID) else { return }
         do {
-            try microphoneRecorder.start(selectedDeviceID: settings.microphoneID)
+            let sampleDelivery: LiveSampleDelivery?
             if liveTranscriptionActive {
                 let asrService = self.asrService
-                microphoneRecorder.onSamples = { samples in
-                    Task {
-                        await asrService.ingestLiveSamples(samples)
-                    }
+                sampleDelivery = LiveSampleDelivery { samples in
+                    await asrService.ingestLiveSamples(samples)
                 }
+            } else {
+                sampleDelivery = nil
+            }
+            try await microphoneRecorder.start(
+                selectedDeviceID: settings.microphoneID,
+                sampleDelivery: sampleDelivery
+            )
+            guard isCurrentRecordingOperation(operationID) else {
+                await microphoneRecorder.cancel()
+                return
             }
             phase = .recording
             overlayState.phase = .recording
@@ -256,26 +300,28 @@ final class AppCoordinator: ObservableObject {
             await asrService.cancelLiveTranscription()
             guard isCurrentRecordingOperation(operationID) else { return }
             liveTranscriptionActive = false
-            recordingOperationID = nil
             overlayState.resetLiveTranscript(visible: false)
             lastError = error.localizedDescription
-            scheduleModelUnloadIfNeeded()
         }
     }
 
     func finishRecordingAndTranscribe() async {
+        if phase == .starting {
+            await cancelRecording()
+            return
+        }
         guard phase == .recording, let operationID = recordingOperationID else { return }
         let wasLiveTranscriptionActive = liveTranscriptionActive
-        let capture = microphoneRecorder.stop()
+        phase = .transcribing
+        overlayState.phase = .transcribing
+        let capture = await microphoneRecorder.stop()
+        guard isCurrentRecordingOperation(operationID) else { return }
         liveTranscriptionActive = false
         if settings.soundFeedbackEnabled {
             soundService.playStop()
         }
 
         if wasLiveTranscriptionActive {
-            phase = .transcribing
-            overlayState.phase = .transcribing
-
             await asrService.finishLiveTranscription()
             guard isCurrentRecordingOperation(operationID) else { return }
             if capture.samples.count >= MicrophoneRecorder.minimumSamplesForASR {
@@ -308,9 +354,6 @@ final class AppCoordinator: ObservableObject {
             return
         }
 
-        phase = .transcribing
-        overlayState.phase = .transcribing
-
         await transcribeBatchAndCommit(
             samples: capture.samples,
             duration: capture.duration,
@@ -331,7 +374,12 @@ final class AppCoordinator: ObservableObject {
         operationID: UUID
     ) async {
         do {
-            let asrResult = try await asrService.transcribe(samples: samples, languageMode: settings.languageMode)
+            let context = ASRContextBuilder.context(for: hotwords.hotwords.map(\.text))
+            let asrResult = try await asrService.transcribe(
+                samples: samples,
+                languageMode: settings.languageMode,
+                context: context
+            )
             guard isCurrentRecordingOperation(operationID) else { return }
             await processAndCommit(asrResult: asrResult, duration: duration, operationID: operationID)
             guard isCurrentRecordingOperation(operationID) else { return }
@@ -387,16 +435,14 @@ final class AppCoordinator: ObservableObject {
             modelVariant: settings.asrModelVariant,
             wasProcessedByLLM: processedByLLM
         )
-        history.add(record, retention: settings.historyRetention)
+        await history.add(record, retention: settings.historyRetention)
         lastError = textProcessingError
     }
 
     func cancelRecording() async {
-        guard phase != .idle else { return }
+        guard phase != .idle || recordingStartupInProgress || recordingOperationID != nil else { return }
         recordingOperationID = nil
-        microphoneRecorder.cancel()
         liveTranscriptionActive = false
-        await asrService.cancelLiveTranscription()
         phase = .idle
         overlayState.phase = .idle
         overlayState.resetLiveTranscript(visible: false)
@@ -405,6 +451,8 @@ final class AppCoordinator: ObservableObject {
             soundService.playCancel()
         }
         scheduleModelUnloadIfNeeded()
+        await microphoneRecorder.cancel()
+        await asrService.cancelLiveTranscription()
     }
 
     private func isCurrentRecordingOperation(_ operationID: UUID) -> Bool {
@@ -423,7 +471,7 @@ final class AppCoordinator: ObservableObject {
 
     func setHistoryRetention(_ retention: HistoryRetention) {
         settings.historyRetention = retention
-        history.applyRetention(retention)
+        Task { await history.applyRetention(retention) }
     }
 
     func setLaunchAtLoginEnabled(_ enabled: Bool) {
@@ -431,7 +479,7 @@ final class AppCoordinator: ObservableObject {
     }
 
     func deleteHistoryRecord(_ record: TranscriptionRecord) {
-        history.delete(record.id)
+        Task { await history.delete(record.id) }
     }
 
     func copyToClipboard(_ text: String) {
@@ -486,30 +534,48 @@ final class AppCoordinator: ObservableObject {
         let shouldUnloadTextProcessor = settings.textProcessingEnabled && textProcessing.isReady
         guard delayMinutes > 0,
               phase == .idle,
+              !recordingStartupInProgress,
               !asrModelIsLoading,
               !textProcessing.isLoading,
               asrModelLoaded || shouldUnloadTextProcessor else { return }
 
+        let generation = UUID()
+        modelUnloadGeneration = generation
         modelUnloadTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delayMinutes * 60))
             guard !Task.isCancelled else { return }
-            await self?.unloadModelsAfterIdle()
+            await self?.unloadModelsAfterIdle(generation: generation)
         }
     }
 
     private func cancelModelUnloadTimer() {
+        modelUnloadGeneration = UUID()
         modelUnloadTask?.cancel()
         modelUnloadTask = nil
     }
 
-    private func unloadModelsAfterIdle() async {
-        guard phase == .idle, !asrModelIsLoading, !textProcessing.isLoading else { return }
+    private func cancelModelUnloadAndWait() async {
+        modelUnloadGeneration = UUID()
+        let task = modelUnloadTask
+        modelUnloadTask = nil
+        task?.cancel()
+        await task?.value
+    }
+
+    private func unloadModelsAfterIdle(generation: UUID) async {
+        guard modelUnloadGeneration == generation,
+              phase == .idle,
+              !recordingStartupInProgress,
+              !asrModelIsLoading,
+              !textProcessing.isLoading else { return }
         let shouldUnloadTextProcessor = settings.textProcessingEnabled && textProcessing.isReady
         if asrModelLoaded {
-            await asrService.unload()
             asrModelLoaded = false
+            await asrService.unload()
+            guard modelUnloadGeneration == generation else { return }
             asrStatusMessage = "Model unloaded after \(settings.modelUnloadDelayMinutes) minutes idle"
         }
+        guard modelUnloadGeneration == generation else { return }
         if shouldUnloadTextProcessor {
             await textProcessing.unloadAfterIdle()
         }

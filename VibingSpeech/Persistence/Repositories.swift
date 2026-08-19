@@ -6,7 +6,7 @@ final class SettingsStore: ObservableObject {
     @Published var liveTranscriptionEnabled: Bool { didSet { save() } }
     @Published var textProcessingEnabled: Bool { didSet { save() } }
     @Published var textProcessingPreset: TextProcessingPreset { didSet { save() } }
-    @Published var customPrompt: String { didSet { save() } }
+    @Published var customPrompt: String { didSet { defaults.set(customPrompt, forKey: "customPrompt") } }
     @Published var soundFeedbackEnabled: Bool { didSet { save() } }
     @Published var languageMode: LanguageMode { didSet { save() } }
     @Published var appearanceMode: AppearanceMode { didSet { save() } }
@@ -71,97 +71,222 @@ private extension UserDefaults {
 final class HistoryRepository: ObservableObject {
     @Published private(set) var records: [TranscriptionRecord] = []
 
-    private let fileURL: URL
-    private let fileManager: FileManager
+    private let storage: HistoryStorage
+    private var retentionPruneTask: Task<Void, Never>?
 
     init(directoryURL: URL? = nil, fileManager: FileManager = .default) {
-        self.fileManager = fileManager
         let base = directoryURL ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("VibingSpeech", isDirectory: true)
-        fileURL = base.appendingPathComponent("history.json")
-        load()
+        storage = HistoryStorage(fileURL: base.appendingPathComponent("history.json"))
     }
 
-    func add(_ record: TranscriptionRecord, retention: HistoryRetention) {
-        guard retention != .never else {
+    deinit {
+        retentionPruneTask?.cancel()
+    }
+
+    func load(retention: HistoryRetention) async {
+        var loadedRecords = await storage.load()
+        loadedRecords.sort {
+            if $0.timestamp != $1.timestamp {
+                return $0.timestamp > $1.timestamp
+            }
+            return $0.id.uuidString > $1.id.uuidString
+        }
+        let repairedWordCounts = normalizeWordCounts(&loadedRecords)
+        records = loadedRecords
+
+        if retention == .never {
             records = []
-            removePersistedFile()
+            await storage.remove()
             return
         }
-        records.insert(record, at: 0)
-        pruneIfNeeded(retention: retention)
-        persist()
+
+        let pruned = pruneIfNeeded(retention: retention)
+        if repairedWordCounts || pruned {
+            await storage.compact(records)
+        }
+        scheduleTimedPruning(for: retention)
     }
 
-    func applyRetention(_ retention: HistoryRetention) {
+    func add(_ record: TranscriptionRecord, retention: HistoryRetention) async {
+        guard retention != .never else {
+            records = []
+            await storage.remove()
+            return
+        }
+
+        records.insert(record, at: 0)
+        if pruneIfNeeded(retention: retention) {
+            await storage.compact(records)
+        } else {
+            await storage.append(record)
+        }
+        scheduleTimedPruning(for: retention)
+    }
+
+    func applyRetention(_ retention: HistoryRetention) async {
         switch retention {
         case .forever:
+            retentionPruneTask?.cancel()
+            retentionPruneTask = nil
             return
         case .never:
             records = []
-            removePersistedFile()
+            retentionPruneTask?.cancel()
+            retentionPruneTask = nil
+            await storage.remove()
         case .oneWeek, .oneDay:
-            let originalCount = records.count
-            pruneIfNeeded(retention: retention)
-            if records.count != originalCount {
-                persist()
+            if pruneIfNeeded(retention: retention) {
+                await storage.compact(records)
+            }
+            scheduleTimedPruning(for: retention)
+        }
+    }
+
+    func delete(_ id: UUID) async {
+        await delete(ids: [id])
+    }
+
+    func delete(ids: Set<UUID>) async {
+        guard !ids.isEmpty else { return }
+        records.removeAll { ids.contains($0.id) }
+        await storage.compact(records)
+    }
+
+    func clear() async {
+        records = []
+        await storage.compact(records)
+    }
+
+    @discardableResult
+    func pruneIfNeeded(retention: HistoryRetention) -> Bool {
+        guard let cutoff = retention.cutoffDate else { return false }
+        let originalCount = records.count
+        records.removeAll { $0.timestamp < cutoff }
+        return records.count != originalCount
+    }
+
+    private func normalizeWordCounts(_ records: inout [TranscriptionRecord]) -> Bool {
+        var repaired = false
+        for index in records.indices {
+            let wordCount = WordCounter.count(records[index].finalText)
+            if records[index].wordCount != wordCount {
+                records[index].wordCount = wordCount
+                repaired = true
             }
         }
+        return repaired
     }
 
-    func delete(_ id: UUID) {
-        records.removeAll { $0.id == id }
-        persist()
-    }
+    private func scheduleTimedPruning(for retention: HistoryRetention) {
+        retentionPruneTask?.cancel()
+        retentionPruneTask = nil
 
-    func clear() {
-        records = []
-        persist()
-    }
-
-    func pruneIfNeeded(retention: HistoryRetention) {
-        guard let cutoff = retention.cutoffDate else { return }
-        records = records.filter { $0.timestamp >= cutoff }
-    }
-
-    private func load() {
-        guard fileManager.fileExists(atPath: fileURL.path) else {
-            records = []
+        guard retention.cutoffDate != nil,
+              let nextExpiry = records
+                .compactMap({ retention.expirationDate(for: $0.timestamp) })
+                .min()
+        else {
             return
         }
+
+        let delay = max(0, nextExpiry.timeIntervalSinceNow)
+        retentionPruneTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await self?.applyRetention(retention)
+        }
+    }
+}
+
+private actor HistoryStorage {
+    private let fileURL: URL
+    private let fileManager = FileManager.default
+    private var persistenceBlocked = false
+
+    init(fileURL: URL) {
+        self.fileURL = fileURL
+    }
+
+    func load() -> [TranscriptionRecord] {
+        guard fileManager.fileExists(atPath: fileURL.path) else { return [] }
         do {
             let data = try Data(contentsOf: fileURL)
-            records = try JSONDecoder.vibingSpeech.decode([TranscriptionRecord].self, from: data)
+            if data.firstNonWhitespaceByte == UInt8(ascii: "[") {
+                let records = try JSONDecoder.vibingSpeech.decode([TranscriptionRecord].self, from: data)
+                try compactThrowing(records)
+                return records
+            }
+            return try data.jsonLines().map { try JSONDecoder.vibingSpeech.decode(TranscriptionRecord.self, from: $0) }
         } catch {
-            preserveCorruptFile()
-            records = []
+            persistenceBlocked = !preserveCorruptFile()
+            NSLog("History persistence load failed: \(error.localizedDescription)")
+            return []
         }
     }
 
-    private func persist() {
+    func append(_ record: TranscriptionRecord) {
+        guard !persistenceBlocked else { return }
         do {
             try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let data = try JSONEncoder.vibingSpeech.encode(records)
-            try AtomicFileWriter.write(data, to: fileURL, fileManager: fileManager)
+            var data = try JSONEncoder.historyJournal.encode(record)
+            data.append(0x0A)
+            if !fileManager.fileExists(atPath: fileURL.path) {
+                guard fileManager.createFile(atPath: fileURL.path, contents: nil) else {
+                    throw CocoaError(.fileWriteUnknown)
+                }
+            }
+            let handle = try FileHandle(forWritingTo: fileURL)
+            defer { try? handle.close() }
+            try handle.seekToEnd()
+            try handle.write(contentsOf: data)
+            try handle.synchronize()
         } catch {
-            NSLog("History persistence failed: \(error.localizedDescription)")
+            NSLog("History journal append failed: \(error.localizedDescription)")
         }
     }
 
-    private func preserveCorruptFile() {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let preserved = fileURL.deletingPathExtension()
-            .appendingPathExtension("corrupt-\(formatter.string(from: Date())).json")
-        try? fileManager.moveItem(at: fileURL, to: preserved)
+    func compact(_ records: [TranscriptionRecord]) {
+        guard !persistenceBlocked else { return }
+        do {
+            try compactThrowing(records)
+        } catch {
+            NSLog("History persistence compaction failed: \(error.localizedDescription)")
+        }
     }
 
-    private func removePersistedFile() {
-        guard fileManager.fileExists(atPath: fileURL.path) else { return }
+    func remove() {
+        guard !persistenceBlocked, fileManager.fileExists(atPath: fileURL.path) else { return }
         do {
             try fileManager.removeItem(at: fileURL)
         } catch {
             NSLog("History persistence cleanup failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func compactThrowing(_ records: [TranscriptionRecord]) throws {
+        try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var data = Data()
+        for record in records {
+            data.append(try JSONEncoder.historyJournal.encode(record))
+            data.append(0x0A)
+        }
+        try AtomicFileWriter.write(data, to: fileURL, fileManager: fileManager)
+    }
+
+    private func preserveCorruptFile() -> Bool {
+        let preserved = fileURL.deletingPathExtension()
+            .appendingPathExtension("corrupt-\(UUID().uuidString).\(fileURL.pathExtension)")
+        do {
+            try fileManager.moveItem(at: fileURL, to: preserved)
+            return true
+        } catch {
+            NSLog("History corrupt-file preservation failed: \(error.localizedDescription)")
+            return false
         }
     }
 }
@@ -172,6 +297,7 @@ final class HotwordRepository: ObservableObject {
 
     private let fileURL: URL
     private let fileManager: FileManager
+    private var persistenceBlocked = false
 
     init(directoryURL: URL? = nil, fileManager: FileManager = .default) {
         self.fileManager = fileManager
@@ -193,7 +319,12 @@ final class HotwordRepository: ObservableObject {
     }
 
     func delete(_ id: UUID) {
-        hotwords.removeAll { $0.id == id }
+        delete(ids: [id])
+    }
+
+    func delete(ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        hotwords.removeAll { ids.contains($0.id) }
         persist()
     }
 
@@ -204,16 +335,30 @@ final class HotwordRepository: ObservableObject {
             hotwords = try JSONDecoder.vibingSpeech.decode([Hotword].self, from: data)
         } catch {
             hotwords = []
+            persistenceBlocked = !preserveCorruptFile()
         }
     }
 
     private func persist() {
+        guard !persistenceBlocked else { return }
         do {
             try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             let data = try JSONEncoder.vibingSpeech.encode(hotwords)
             try AtomicFileWriter.write(data, to: fileURL, fileManager: fileManager)
         } catch {
             NSLog("Hotword persistence failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func preserveCorruptFile() -> Bool {
+        let preserved = fileURL.deletingPathExtension()
+            .appendingPathExtension("corrupt-\(UUID().uuidString).\(fileURL.pathExtension)")
+        do {
+            try fileManager.moveItem(at: fileURL, to: preserved)
+            return true
+        } catch {
+            NSLog("Hotword corrupt-file preservation failed: \(error.localizedDescription)")
+            return false
         }
     }
 }
@@ -238,6 +383,13 @@ extension JSONEncoder {
         encoder.dateEncodingStrategy = .iso8601
         return encoder
     }
+
+    static var historyJournal: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
 }
 
 extension JSONDecoder {
@@ -245,5 +397,41 @@ extension JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
+    }
+}
+
+private extension Data {
+    var firstNonWhitespaceByte: UInt8? {
+        first { !$0.isASCIIWhitespace }
+    }
+
+    func jsonLines() -> [Data] {
+        var lines: [Data] = []
+        for bytes in [UInt8](self).split(separator: 0x0A) {
+            let line = Data(bytes)
+            if line.contains(where: { !$0.isASCIIWhitespace }) {
+                lines.append(line)
+            }
+        }
+        return lines
+    }
+}
+
+private extension UInt8 {
+    var isASCIIWhitespace: Bool {
+        self == 0x09 || self == 0x0A || self == 0x0D || self == 0x20
+    }
+}
+
+private extension HistoryRetention {
+    func expirationDate(for timestamp: Date) -> Date? {
+        switch self {
+        case .oneWeek:
+            Calendar.current.date(byAdding: .day, value: 7, to: timestamp)
+        case .oneDay:
+            Calendar.current.date(byAdding: .day, value: 1, to: timestamp)
+        case .forever, .never:
+            nil
+        }
     }
 }

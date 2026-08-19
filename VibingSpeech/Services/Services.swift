@@ -343,15 +343,102 @@ private enum CoreAudioInputDevices {
     }
 }
 
-private final class MicrophoneAudioTap {
-    private weak var recorder: MicrophoneRecorder?
-    private let inputSampleRate: Double
-    private let sessionID: UUID
+/// Delivers converted recording batches to one asynchronous consumer in capture order.
+/// Create this before `MicrophoneRecorder.start(selectedDeviceID:sampleDelivery:)`, then let
+/// `MicrophoneRecorder.stop()` or `cancel()` close and drain it before stopping live ASR.
+final class LiveSampleDelivery: @unchecked Sendable {
+    private let lock = NSLock()
+    private let continuation: AsyncStream<[Float]>.Continuation
+    private let consumer: Task<Void, Never>
+    private var isClosed = false
 
-    init(recorder: MicrophoneRecorder, inputSampleRate: Double, sessionID: UUID) {
+    init(consume: @escaping @Sendable ([Float]) async -> Void) {
+        var capturedContinuation: AsyncStream<[Float]>.Continuation?
+        let stream = AsyncStream<[Float]> { continuation in
+            capturedContinuation = continuation
+        }
+        continuation = capturedContinuation!
+        consumer = Task.detached {
+            for await samples in stream {
+                await consume(samples)
+            }
+        }
+    }
+
+    func enqueue(_ samples: [Float]) {
+        guard !samples.isEmpty else { return }
+        lock.lock()
+        let canDeliver = !isClosed
+        lock.unlock()
+        guard canDeliver else { return }
+        continuation.yield(samples)
+    }
+
+    func closeAndDrain() async {
+        if closeSynchronously() {
+            continuation.finish()
+        }
+        await consumer.value
+    }
+
+    deinit {
+        continuation.finish()
+    }
+
+    private func closeSynchronously() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isClosed else { return false }
+        isClosed = true
+        return true
+    }
+}
+
+private final class AudioConverterInputProvider: @unchecked Sendable {
+    private let lock = NSLock()
+    private var inputBuffer: AVAudioPCMBuffer?
+
+    init(inputBuffer: AVAudioPCMBuffer) {
+        self.inputBuffer = inputBuffer
+    }
+
+    func takeInputBuffer() -> AVAudioPCMBuffer? {
+        lock.lock()
+        defer { lock.unlock() }
+        defer { inputBuffer = nil }
+        return inputBuffer
+    }
+}
+
+private final class MicrophoneAudioTap: @unchecked Sendable {
+    private weak var recorder: MicrophoneRecorder?
+    private let sessionID: UUID
+    private let converter: AVAudioConverter
+    private let outputFormat: AVAudioFormat
+    private let sampleDelivery: LiveSampleDelivery?
+    private let lock = NSLock()
+    private var samples: [Float] = []
+    private var isClosed = false
+
+    init?(
+        recorder: MicrophoneRecorder,
+        inputFormat: AVAudioFormat,
+        sessionID: UUID,
+        sampleDelivery: LiveSampleDelivery?
+    ) {
+        guard let outputFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: 16_000,
+            channels: 1,
+            interleaved: false
+        ), let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
+            return nil
+        }
         self.recorder = recorder
-        self.inputSampleRate = inputSampleRate
         self.sessionID = sessionID
+        self.converter = converter
+        self.outputFormat = outputFormat
+        self.sampleDelivery = sampleDelivery
     }
 
     func makeBlock() -> AVAudioNodeTapBlock {
@@ -361,11 +448,93 @@ private final class MicrophoneAudioTap {
     }
 
     private func process(_ buffer: AVAudioPCMBuffer) {
-        let newSamples = MicrophoneRecorder.downmixedAndResampledSamples(from: buffer, inputSampleRate: inputSampleRate)
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isClosed else { return }
+        let newSamples = convertedSamples(from: buffer)
+        samples.append(contentsOf: newSamples)
+        sampleDelivery?.enqueue(newSamples)
         let level = MicrophoneRecorder.rmsLevel(for: newSamples)
         Task { @MainActor [weak recorder, sessionID] in
-            recorder?.ingest(samples: newSamples, level: level, sessionID: sessionID)
+            recorder?.updateRMSLevel(level, sessionID: sessionID)
         }
+    }
+
+    func finish() async -> [Float] {
+        let capturedSamples = closeAndCaptureSynchronously()
+        await sampleDelivery?.closeAndDrain()
+        return capturedSamples
+    }
+
+    private func closeAndCaptureSynchronously() -> [Float] {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isClosed else { return [] }
+        isClosed = true
+        let flushedSamples = flushConverter()
+        samples.append(contentsOf: flushedSamples)
+        sampleDelivery?.enqueue(flushedSamples)
+        let capturedSamples = samples
+        samples.removeAll(keepingCapacity: false)
+        return capturedSamples
+    }
+
+    private func convertedSamples(from inputBuffer: AVAudioPCMBuffer) -> [Float] {
+        let ratio = outputFormat.sampleRate / inputBuffer.format.sampleRate
+        let capacity = AVAudioFrameCount(max(512, Int(ceil(Double(inputBuffer.frameLength) * ratio)) + 512))
+        let inputProvider = AudioConverterInputProvider(inputBuffer: inputBuffer)
+        var converted: [Float] = []
+
+        while true {
+            guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: capacity) else {
+                return converted
+            }
+            var error: NSError?
+            let status = converter.convert(to: outputBuffer, error: &error) { _, inputStatus in
+                guard let input = inputProvider.takeInputBuffer() else {
+                    inputStatus.pointee = .noDataNow
+                    return nil
+                }
+                inputStatus.pointee = .haveData
+                return input
+            }
+            guard error == nil else { return converted }
+            appendSamples(from: outputBuffer, to: &converted)
+            guard status == .haveData, outputBuffer.frameLength > 0 else { break }
+        }
+        return converted
+    }
+
+    private func flushConverter() -> [Float] {
+        var flushed: [Float] = []
+        let capacity = AVAudioFrameCount(4_096)
+
+        while true {
+            guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: capacity) else { break }
+            var error: NSError?
+            let status = converter.convert(to: outputBuffer, error: &error) { _, inputStatus in
+                inputStatus.pointee = .endOfStream
+                return nil
+            }
+            guard error == nil else { break }
+            appendSamples(from: outputBuffer, to: &flushed)
+            switch status {
+            case .haveData:
+                continue
+            case .inputRanDry, .endOfStream, .error:
+                break
+            @unknown default:
+                break
+            }
+            break
+        }
+        converter.reset()
+        return flushed
+    }
+
+    private func appendSamples(from buffer: AVAudioPCMBuffer, to output: inout [Float]) {
+        guard let channel = buffer.floatChannelData?.pointee else { return }
+        output.append(contentsOf: UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
     }
 }
 
@@ -376,10 +545,7 @@ final class MicrophoneRecorder: ObservableObject {
     @Published private(set) var rmsLevel: Double = 0
 
     var onRMSLevel: ((Double) -> Void)?
-    var onSamples: (([Float]) -> Void)?
-
     private var engine: AVAudioEngine?
-    private var samples: [Float] = []
     private var sessionID = UUID()
     private var startTime: Date?
     private var inputTapInstalled = false
@@ -390,23 +556,26 @@ final class MicrophoneRecorder: ObservableObject {
         return [MicrophoneDevice.systemDefault] + devices
     }
 
-    func start(selectedDeviceID: String) throws {
-        cancel()
+    func start(selectedDeviceID: String, sampleDelivery: LiveSampleDelivery? = nil) async throws {
+        await cancel()
         let engine = AVAudioEngine()
         let input = engine.inputNode
         try activateSelectedInputDevice(selectedDeviceID, on: input)
         let inputFormat = input.inputFormat(forBus: 0)
         guard inputFormat.channelCount > 0 else { throw MicrophoneRecorderError.inputUnavailable }
-        samples = []
-        sessionID = UUID()
-        startTime = Date()
-        let activeSessionID = sessionID
-        self.engine = engine
-        let audioTap = MicrophoneAudioTap(
+        let activeSessionID = UUID()
+        guard let audioTap = MicrophoneAudioTap(
             recorder: self,
-            inputSampleRate: inputFormat.sampleRate,
-            sessionID: activeSessionID
-        )
+            inputFormat: inputFormat,
+            sessionID: activeSessionID,
+            sampleDelivery: sampleDelivery
+        ) else {
+            await sampleDelivery?.closeAndDrain()
+            throw MicrophoneRecorderError.conversionFailed
+        }
+        sessionID = activeSessionID
+        startTime = Date()
+        self.engine = engine
         self.audioTap = audioTap
 
         input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat, block: audioTap.makeBlock())
@@ -420,37 +589,35 @@ final class MicrophoneRecorder: ObservableObject {
             self.engine = nil
             self.audioTap = nil
             startTime = nil
+            _ = await audioTap.finish()
             throw error
         }
     }
 
-    func stop() -> (samples: [Float], duration: Double) {
+    func stop() async -> (samples: [Float], duration: Double) {
         let duration = startTime.map { Date().timeIntervalSince($0) } ?? 0
         removeInputTapIfNeeded()
         engine?.stop()
         engine = nil
+        let captured = await audioTap?.finish() ?? []
         audioTap = nil
         startTime = nil
-        let captured = samples
-        samples = []
         sessionID = UUID()
         rmsLevel = 0
         onRMSLevel?(0)
-        onSamples = nil
         return (captured, duration)
     }
 
-    func cancel() {
+    func cancel() async {
         removeInputTapIfNeeded()
         engine?.stop()
         engine = nil
+        _ = await audioTap?.finish()
         audioTap = nil
-        samples = []
         startTime = nil
         sessionID = UUID()
         rmsLevel = 0
         onRMSLevel?(0)
-        onSamples = nil
     }
 
     private func removeInputTapIfNeeded() {
@@ -481,47 +648,10 @@ final class MicrophoneRecorder: ObservableObject {
         }
     }
 
-    fileprivate func ingest(samples newSamples: [Float], level: Double, sessionID: UUID) {
+    fileprivate func updateRMSLevel(_ level: Double, sessionID: UUID) {
         guard self.sessionID == sessionID else { return }
-        samples.append(contentsOf: newSamples)
         rmsLevel = level
         onRMSLevel?(level)
-        onSamples?(newSamples)
-    }
-
-    nonisolated fileprivate static func downmixedAndResampledSamples(from buffer: AVAudioPCMBuffer, inputSampleRate: Double) -> [Float] {
-        guard let channels = buffer.floatChannelData else { return [] }
-        let frameCount = Int(buffer.frameLength)
-        let channelCount = max(1, Int(buffer.format.channelCount))
-        guard frameCount > 0 else { return [] }
-
-        func monoSample(at frame: Int) -> Float {
-            var value: Float = 0
-            for channel in 0..<channelCount {
-                value += channels[channel][frame]
-            }
-            return value / Float(channelCount)
-        }
-
-        guard inputSampleRate > 0 else { return [] }
-        guard inputSampleRate != 16_000 else {
-            var mono = [Float]()
-            mono.reserveCapacity(frameCount)
-            for frame in 0..<frameCount {
-                mono.append(monoSample(at: frame))
-            }
-            return mono
-        }
-
-        let step = inputSampleRate / 16_000
-        var position = 0.0
-        var output = [Float]()
-        output.reserveCapacity(Int(Double(frameCount) / step) + 1)
-        while Int(position) < frameCount {
-            output.append(monoSample(at: Int(position)))
-            position += step
-        }
-        return output
     }
 
     nonisolated fileprivate static func rmsLevel(for samples: [Float]) -> Double {
@@ -550,6 +680,49 @@ enum ASRServiceError: LocalizedError {
         case .emptyResult:
             "The model returned no text."
         }
+    }
+}
+
+enum ASRContextBuilder {
+    private static let maximumHotwordLength = 96
+    private static let maximumContextLength = 512
+    private static let prefix = "Vocabulary hints (use only when supported by the audio): "
+
+    static func context(for hotwords: [String]) -> String {
+        var seen = Set<String>()
+        var terms: [String] = []
+        var remainingLength = maximumContextLength - prefix.count
+
+        for hotword in hotwords {
+            let normalized = normalizedHotword(hotword)
+            guard !normalized.isEmpty else { continue }
+            let deduplicationKey = normalized.folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: Locale(identifier: "en_US_POSIX")
+            )
+            guard seen.insert(deduplicationKey).inserted else { continue }
+
+            let separatorLength = terms.isEmpty ? 0 : 2
+            guard remainingLength > separatorLength else { break }
+            let allowedLength = min(maximumHotwordLength, remainingLength - separatorLength)
+            let capped = String(normalized.prefix(allowedLength))
+            guard !capped.isEmpty else { break }
+            terms.append(capped)
+            remainingLength -= capped.count + separatorLength
+        }
+
+        guard !terms.isEmpty else { return "" }
+        return prefix + terms.joined(separator: ", ")
+    }
+
+    private static func normalizedHotword(_ hotword: String) -> String {
+        let collapsedWhitespace = hotword
+            .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .joined(separator: " ")
+        let neutralizedControls = collapsedWhitespace
+            .replacingOccurrences(of: "<|", with: "＜｜")
+            .replacingOccurrences(of: "|>", with: "｜＞")
+        return String(neutralizedControls.prefix(maximumHotwordLength))
     }
 }
 
@@ -834,12 +1007,20 @@ actor ASRService {
         #endif
     }
 
-    func transcribe(samples: [Float], languageMode: LanguageMode) async throws -> ASRResult {
+    func transcribe(
+        samples: [Float],
+        languageMode: LanguageMode,
+        context: String = ""
+    ) async throws -> ASRResult {
         guard samples.count >= MicrophoneRecorder.minimumSamplesForASR else { throw ASRServiceError.shortAudio }
         #if canImport(MLX) && canImport(MLXAudioSTT)
         guard let model else { throw ASRServiceError.modelUnavailable }
         let languageHint = languageMode.asrLanguageHint
-        let transcription = model.generate(audio: MLXArray(samples), language: languageHint)
+        let transcription = model.generate(
+            audio: MLXArray(samples),
+            context: context,
+            language: languageHint
+        )
         let text = transcription.text
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw ASRServiceError.emptyResult }
