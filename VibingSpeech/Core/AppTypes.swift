@@ -85,6 +85,7 @@ enum TextProcessingPreset: String, CaseIterable, Codable, Identifiable {
 
 enum RecordingPhase: String, Codable {
     case idle
+    case starting
     case recording
     case transcribing
 }
@@ -249,24 +250,43 @@ enum WordCounter {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return 0 }
 
-        if containsCJK(in: trimmed) {
-            return trimmed.unicodeScalars.filter { scalar in
-                let category = scalar.properties.generalCategory
-                return category == .otherLetter || category == .uppercaseLetter || category == .lowercaseLetter
-            }.count
+        var count = 0
+        var isInsideNonCJKWord = false
+
+        for scalar in trimmed.unicodeScalars {
+            if isCJK(scalar) {
+                if isInsideNonCJKWord {
+                    count += 1
+                    isInsideNonCJKWord = false
+                }
+                count += 1
+                continue
+            }
+
+            let category = scalar.properties.generalCategory
+            switch category {
+            case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter,
+                 .otherLetter, .decimalNumber, .letterNumber, .otherNumber:
+                isInsideNonCJKWord = true
+            case .nonspacingMark, .spacingMark, .enclosingMark:
+                break
+            default:
+                if isInsideNonCJKWord {
+                    count += 1
+                    isInsideNonCJKWord = false
+                }
+            }
         }
 
-        return trimmed.split(whereSeparator: { $0.isWhitespace }).count
+        return count + (isInsideNonCJKWord ? 1 : 0)
     }
 
-    private static func containsCJK(in text: String) -> Bool {
-        text.unicodeScalars.contains { scalar in
-            switch scalar.value {
-            case 0x3040...0x30FF, 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xAC00...0xD7AF:
-                return true
-            default:
-                return false
-            }
+    private static func isCJK(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x3040...0x30FF, 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xAC00...0xD7AF:
+            return true
+        default:
+            return false
         }
     }
 }

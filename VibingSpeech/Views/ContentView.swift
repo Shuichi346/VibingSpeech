@@ -45,7 +45,7 @@ struct ContentView: View {
     private var detail: some View {
         switch settings.selectedSidebar {
         case .home:
-            HomeView(coordinator: coordinator, settings: settings)
+            HomeView(coordinator: coordinator, settings: settings, history: coordinator.history)
         case .hotwords:
             HotwordsView(repository: coordinator.hotwords)
         case .history:
@@ -160,6 +160,17 @@ private struct SidebarRow: View {
 private struct HomeView: View {
     @ObservedObject var coordinator: AppCoordinator
     @ObservedObject var settings: SettingsStore
+    @ObservedObject var history: HistoryRepository
+
+    private var wordsToday: Int {
+        history.records
+            .filter { Calendar.current.isDateInToday($0.timestamp) }
+            .reduce(0) { $0 + $1.wordCount }
+    }
+
+    private var totalWords: Int {
+        history.records.reduce(0) { $0 + $1.wordCount }
+    }
 
     var body: some View {
         ScrollView {
@@ -179,9 +190,9 @@ private struct HomeView: View {
                 .background(.quaternary.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
 
                 HStack(spacing: 0) {
-                    StatBlock(systemImage: "pencil", value: "\(coordinator.wordsToday) words", caption: "Words today")
+                    StatBlock(systemImage: "pencil", value: "\(wordsToday) words", caption: "Words today")
                     Divider().frame(height: 36)
-                    StatBlock(systemImage: "doc.text", value: "\(coordinator.totalWords) words", caption: "Total words")
+                    StatBlock(systemImage: "doc.text", value: "\(totalWords) words", caption: "Total words")
                 }
                 .frame(height: 54)
                 .background(.quaternary.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
@@ -619,9 +630,8 @@ private struct HotwordsView: View {
                         }
                     }
                     .onDelete { indexSet in
-                        for index in indexSet {
-                            repository.delete(repository.hotwords[index].id)
-                        }
+                        let ids = Set(indexSet.map { repository.hotwords[$0].id })
+                        repository.delete(ids: ids)
                     }
                 }
                 .listStyle(.inset)
@@ -732,7 +742,7 @@ private struct HistoryView: View {
         .frame(maxWidth: 660, maxHeight: .infinity, alignment: .topLeading)
         .confirmationDialog("Clear all history?", isPresented: $showingClearConfirmation) {
             Button("Clear History", role: .destructive) {
-                repository.clear()
+                Task { await repository.clear() }
             }
         }
     }

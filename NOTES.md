@@ -1,5 +1,14 @@
 # Notes
 
+## 2026-08-20
+
+- Recording now enters a cancellable `starting` phase before asynchronous setup, waits for any idle-unload task to finish, and uses an operation identifier to prevent canceled setup, ASR, or LLM work from restoring UI state or committing a result.
+- `MicrophoneAudioTap` now owns one `AVAudioConverter` for the recording session. `MicrophoneRecorder.stop()` and `cancel()` finish the tap and drain `LiveSampleDelivery` before live ASR is stopped or canceled, preserving capture order and final buffered audio.
+- Final batch ASR now receives saved hotwords through `ASRContextBuilder`; the builder deduplicates terms, bounds their lengths, collapses whitespace, and neutralizes Qwen control-token delimiters.
+- History persistence moved off `MainActor` into `HistoryStorage`. Existing JSON arrays migrate to an append-only JSON Lines journal, word counts are repaired during load, timed retention is enforced after launch and as records age, and malformed files are preserved before new data is written.
+- Hotword multi-row deletion now captures record identifiers before mutating the collection, and malformed hotword files are preserved with collision-resistant names instead of being overwritten.
+- All 28 focused unit tests passed, as did the signing-disabled arm64 Release build and Xcode static analysis. The shared UI test target was configured with `--ui-testing`, but its runner could not launch on this machine because no trusted Development Team identity was available (`AppleMobileFileIntegrity` error `-423`); no UI assertion was reached.
+
 ## 2026-08-09
 
 - `script/archive.sh` now resolves both Xcode settings before archiving and rejects a copied `.app` whose embedded Version or Build differs. `Info.plist` continues to expand `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` into the bundle version keys.

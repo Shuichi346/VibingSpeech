@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added an explicit Stop Recording command, made asynchronous recording startup cancellable, refreshed microphone permission before capture, and serialized startup with idle model unloading.
+- Replaced per-buffer nearest-neighbor microphone resampling with one persistent `AVAudioConverter`, and drained ordered live-audio delivery before finalization so tail buffers are not dropped or reordered.
+- Connected saved hotwords to the bounded, sanitized context passed to the final Qwen3-ASR transcription.
+- Moved history disk I/O to an actor-backed JSON Lines journal with legacy-array migration, append-only normal saves, startup and timed retention pruning, and corrupt-file preservation.
+- Fixed multi-row hotword deletion, corrupt hotword-file preservation, and word counts for mixed CJK and Latin text.
 - Made release archives fail when their embedded Version or Build does not match Xcode's resolved Identity settings.
 - Migrated Text Processing (LLM) to `mlx-community/Qwen3.5-4B-MLX-4bit`, disabled thinking through the model's chat template, and applied Qwen3.5's recommended general Instruct sampling settings.
 - Switched Qwen3-ASR downloads to the `mlx-community` MLX repositories for the 0.6B 8-bit, 1.7B 4-bit, and 1.7B 8-bit models, and refreshed their displayed download-size estimates.
@@ -10,7 +15,6 @@
 - Prevented cancellation during live-session drain, ASR, or LLM work from inserting or saving a late result.
 - Fixed Save History retention so changing the dropdown immediately prunes timed history or removes `history.json` for Never instead of waiting for the next saved transcription.
 - Hardened ASR and Text Processing model loading so stale async completions cannot replace newer model state, and previous model resources are explicitly unloaded before replacement.
-- Reduced microphone tap audio-conversion allocation work by resampling directly from channel data when the input sample rate is not 16 kHz.
 - Updated Swift package pins to `mlx-audio-swift` `0.1.3`, `mlx-swift-lm` `3.31.4`, and transitive `mlx-swift` `0.31.6` after tagged-source/API review, Debug tests, and a signing-disabled Release build.
 - Updated direct Swift package pins to `speech-swift` `0.0.19` and `swift-transformers` `1.3.3` after package resolution, Debug tests, and Release build verification succeeded.
 - Fixed Microphone settings so selecting a non-default input device now applies that Core Audio device to the recording engine instead of only changing the displayed device name.
@@ -37,6 +41,7 @@
 
 ### Dependency notes
 
+- 2026-08-20: The pinned `mlx-audio-swift` `0.1.3` `Qwen3ASRModel.generate` API accepts a `context` argument. Saved hotwords now populate that argument for the final batch transcription after bounded sanitization; streaming review remains unchanged.
 - 2026-08-08: `mlx-audio-swift` `0.1.3` supplies `MLXAudioSTT`, Qwen3-ASR batch generation, and the review-only streaming session. `MLXAudioSTT` contains `MLXAudioVAD` transitively, but the app does not directly import, configure, or load a VAD model; final inference receives the complete 16 kHz capture. `mlx-swift` is resolved to `0.31.6`, compatible with both `mlx-audio-swift` and `mlx-swift-lm` `3.31.4`.
 - 2026-05-30: `speech-swift` `0.0.19` is used for the Qwen3ASR, AudioCommon, and SpeechVAD products. Hotwords are persisted locally, but the public `Qwen3ASRModel.transcribe` examples do not document a prompt-bias or hotword context parameter, so the app does not claim active ASR biasing until that API is confirmed.
 - 2026-05-30: Text Processing uses `mlx-swift-lm` `3.31.3`, `swift-huggingface` `0.9.0`, and `swift-transformers` `1.3.3` to load `mlx-community/Qwen3-4B-Instruct-2507-4bit`.

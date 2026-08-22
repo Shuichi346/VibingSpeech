@@ -40,6 +40,17 @@
                ReferencedContainer = "container:VibingSpeech.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "400000000000000000000003"
+               BuildableName = "VibingSpeechUITests.xctest"
+               BlueprintName = "VibingSpeechUITests"
+               ReferencedContainer = "container:VibingSpeech.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

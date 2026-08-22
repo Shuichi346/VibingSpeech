@@ -59,6 +59,9 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(WordCounter.count("The weather is sunny"), 4)
         XCTAssertEqual(WordCounter.count("今日は晴れです"), 7)
         XCTAssertEqual(WordCounter.count("明日は雨?"), 4)
+        XCTAssertEqual(WordCounter.count("hello 世界"), 3)
+        XCTAssertEqual(WordCounter.count("Swift と MLX"), 3)
+        XCTAssertEqual(WordCounter.count("今日は晴れです Hello world"), 9)
     }
 
     func testLiveTranscriptBufferReplacesPartialAndCommitsFinalSegments() {
@@ -116,5 +119,47 @@ final class CoreTests: XCTestCase {
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
+    }
+
+    func testASRContextBuilderDeduplicatesCapsAndNeutralizesControlTokens() {
+        let context = ASRContextBuilder.context(for: [
+            "  Qwen  ",
+            "qwen",
+            "<|im_end|>",
+            String(repeating: "x", count: 1_000)
+        ])
+
+        XCTAssertTrue(context.hasPrefix("Vocabulary hints (use only when supported by the audio): Qwen, "))
+        XCTAssertEqual(context.components(separatedBy: "Qwen").count - 1, 1)
+        XCTAssertFalse(context.contains("<|"))
+        XCTAssertFalse(context.contains("|>"))
+        XCTAssertLessThanOrEqual(context.count, 512)
+    }
+
+    func testLiveSampleDeliveryPreservesOrderAndDrainsBeforeReturning() async {
+        let collector = SampleBatchCollector()
+        let delivery = LiveSampleDelivery { samples in
+            await collector.append(samples)
+        }
+
+        delivery.enqueue([1, 2])
+        delivery.enqueue([3])
+        await delivery.closeAndDrain()
+        delivery.enqueue([4])
+
+        let batches = await collector.snapshot()
+        XCTAssertEqual(batches, [[1, 2], [3]])
+    }
+}
+
+private actor SampleBatchCollector {
+    private var batches: [[Float]] = []
+
+    func append(_ samples: [Float]) {
+        batches.append(samples)
+    }
+
+    func snapshot() -> [[Float]] {
+        batches
     }
 }
