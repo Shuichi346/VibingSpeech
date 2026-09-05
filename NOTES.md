@@ -1,5 +1,12 @@
 # Notes
 
+## 2026-09-05
+
+- Reproduced external Apple headset microphone failure with SAudio Bluetooth input/output selected in macOS: `AudioUnitSetProperty` selected the 48 kHz external microphone, but AVAudioEngine initialization restored the 16 kHz Bluetooth aggregate and failed with `-10868`. Removing `prepare()` worked in a synchronous probe but still failed or captured silence in the actual asynchronous recorder, so that workaround was rejected.
+- Replaced the recorder's AVAudioEngine with an input-only AUHAL following [Apple TN2091](https://developer.apple.com/library/archive/technotes/tn2091/_index.html). Explicit UIDs and the current default input resolve independently of playback; the existing persistent 16 kHz converter, RMS updates, and ordered live delivery remain in use. Teardown disposes the audio unit before closing/draining the sample collector.
+- With Bluetooth connected, a harness compiled from the actual recorder source passed external/default/external capture, exact live/final sample equality, and cancel/restart checks. Two-second external captures yielded about 32,400 mono 16 kHz samples. No audio was saved. The signing-disabled arm64 Debug test run passed 29 tests; the opt-in hardware XCTest was skipped by default and requires `VIBINGSPEECH_TEST_MICROPHONE_UID` plus microphone permission on the test host.
+- `./script/build_and_run.sh --verify` built and launched the Debug app successfully.
+
 ## 2026-08-20
 
 - Recording now enters a cancellable `starting` phase before asynchronous setup, waits for any idle-unload task to finish, and uses an operation identifier to prevent canceled setup, ASR, or LLM work from restoring UI state or committing a result.

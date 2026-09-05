@@ -232,6 +232,7 @@ enum MicrophoneRecorderError: LocalizedError {
     case conversionFailed
     case selectedDeviceUnavailable(String)
     case deviceSelectionFailed(OSStatus)
+    case audioUnitFailed(String, OSStatus)
 
     var errorDescription: String? {
         switch self {
@@ -241,6 +242,8 @@ enum MicrophoneRecorderError: LocalizedError {
             "The selected microphone is unavailable."
         case let .deviceSelectionFailed(status):
             "The selected microphone could not be activated. Core Audio status: \(status)."
+        case let .audioUnitFailed(operation, status):
+            "Microphone \(operation) failed. Core Audio status: \(status)."
         }
     }
 }
@@ -252,6 +255,28 @@ private enum CoreAudioInputDevices {
 
     static func audioDeviceID(for uid: String) -> AudioDeviceID? {
         allInputDevices().first { $0.uid == uid }?.id
+    }
+
+    static func resolveDeviceID(_ selection: String) throws -> AudioDeviceID {
+        if selection != MicrophoneDevice.systemDefault.id {
+            guard let deviceID = audioDeviceID(for: selection) else {
+                throw MicrophoneRecorderError.selectedDeviceUnavailable(selection)
+            }
+            return deviceID
+        }
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID = AudioDeviceID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceID
+        ) == noErr, deviceID != kAudioObjectUnknown else {
+            throw MicrophoneRecorderError.inputUnavailable
+        }
+        return deviceID
     }
 
     private static func allInputDevices() -> [(id: AudioDeviceID, uid: String, name: String)] {
@@ -441,13 +466,7 @@ private final class MicrophoneAudioTap: @unchecked Sendable {
         self.sampleDelivery = sampleDelivery
     }
 
-    func makeBlock() -> AVAudioNodeTapBlock {
-        { [weak self] buffer, _ in
-            self?.process(buffer)
-        }
-    }
-
-    private func process(_ buffer: AVAudioPCMBuffer) {
+    func process(_ buffer: AVAudioPCMBuffer) {
         lock.lock()
         defer { lock.unlock() }
         guard !isClosed else { return }
@@ -538,6 +557,135 @@ private final class MicrophoneAudioTap: @unchecked Sendable {
     }
 }
 
+/// Owns an input-only AUHAL so Bluetooth playback cannot replace the selected microphone.
+/// Configuration and teardown run on the recorder's actor; the C callback is nonisolated.
+private final class MicrophoneInputUnit {
+    let format: AVAudioFormat
+    private var unit: AudioUnit?
+    private let buffer: AVAudioPCMBuffer
+    private var audioTap: MicrophoneAudioTap?
+
+    init(deviceID: AudioDeviceID) throws {
+        let configured = try Self.configure(deviceID: deviceID)
+        unit = configured.unit
+        format = configured.format
+        buffer = configured.buffer
+    }
+
+    deinit { stop() }
+
+    func start(audioTap: MicrophoneAudioTap) throws {
+        guard let unit else { throw MicrophoneRecorderError.inputUnavailable }
+        self.audioTap = audioTap
+        var callback = AURenderCallbackStruct(
+            inputProc: Self.inputCallback,
+            inputProcRefCon: Unmanaged.passUnretained(self).toOpaque()
+        )
+        try Self.check(AudioUnitSetProperty(
+            unit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0,
+            &callback, UInt32(MemoryLayout<AURenderCallbackStruct>.size)
+        ), operation: "callback setup")
+        try Self.check(AudioOutputUnitStart(unit), operation: "start")
+    }
+
+    func stop() {
+        guard let unit else { return }
+        // Stop and dispose the unit before releasing anything referenced by its callback.
+        AudioOutputUnitStop(unit)
+        AudioUnitUninitialize(unit)
+        AudioComponentInstanceDispose(unit)
+        self.unit = nil
+        audioTap = nil
+    }
+
+    private static let inputCallback: AURenderCallback = { context, flags, timestamp, _, frameCount, _ in
+        let capture = Unmanaged<MicrophoneInputUnit>.fromOpaque(context).takeUnretainedValue()
+        guard let unit = capture.unit else { return kAudioUnitErr_Uninitialized }
+        guard frameCount <= capture.buffer.frameCapacity else { return kAudioUnitErr_TooManyFramesToProcess }
+        capture.buffer.frameLength = frameCount
+        let status = AudioUnitRender(unit, flags, timestamp, 1, frameCount, capture.buffer.mutableAudioBufferList)
+        if status == noErr {
+            capture.audioTap?.process(capture.buffer)
+        }
+        return status
+    }
+
+    private static func configure(deviceID: AudioDeviceID) throws -> (
+        unit: AudioUnit, format: AVAudioFormat, buffer: AVAudioPCMBuffer
+    ) {
+        var description = AudioComponentDescription(
+            componentType: kAudioUnitType_Output,
+            componentSubType: kAudioUnitSubType_HALOutput,
+            componentManufacturer: kAudioUnitManufacturer_Apple,
+            componentFlags: 0,
+            componentFlagsMask: 0
+        )
+        guard let component = AudioComponentFindNext(nil, &description) else {
+            throw MicrophoneRecorderError.inputUnavailable
+        }
+        var instance: AudioUnit?
+        try check(AudioComponentInstanceNew(component, &instance), operation: "creation")
+        guard let unit = instance else { throw MicrophoneRecorderError.inputUnavailable }
+        do {
+            var enabled: UInt32 = 1
+            try check(AudioUnitSetProperty(
+                unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1,
+                &enabled, UInt32(MemoryLayout<UInt32>.size)
+            ), operation: "input setup")
+            enabled = 0
+            try check(AudioUnitSetProperty(
+                unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Output, 0,
+                &enabled, UInt32(MemoryLayout<UInt32>.size)
+            ), operation: "output setup")
+            var selectedDevice = deviceID
+            let selectionStatus = AudioUnitSetProperty(
+                unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+                &selectedDevice, UInt32(MemoryLayout<AudioDeviceID>.size)
+            )
+            guard selectionStatus == noErr else {
+                throw MicrophoneRecorderError.deviceSelectionFailed(selectionStatus)
+            }
+
+            var hardwareFormat = AudioStreamBasicDescription()
+            var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+            try check(AudioUnitGetProperty(
+                unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 1, &hardwareFormat, &size
+            ), operation: "format lookup")
+            guard hardwareFormat.mSampleRate > 0, hardwareFormat.mChannelsPerFrame > 0,
+                  let format = AVAudioFormat(
+                    commonFormat: .pcmFormatFloat32,
+                    sampleRate: hardwareFormat.mSampleRate,
+                    channels: hardwareFormat.mChannelsPerFrame,
+                    interleaved: false
+                  ) else { throw MicrophoneRecorderError.inputUnavailable }
+            var clientFormat = format.streamDescription.pointee
+            try check(AudioUnitSetProperty(
+                unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1,
+                &clientFormat, UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+            ), operation: "format setup")
+            try check(AudioUnitInitialize(unit), operation: "initialization")
+            var maximumFrames: UInt32 = 0
+            size = UInt32(MemoryLayout<UInt32>.size)
+            try check(AudioUnitGetProperty(
+                unit, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0,
+                &maximumFrames, &size
+            ), operation: "buffer size lookup")
+            guard maximumFrames > 0,
+                  let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: maximumFrames)
+            else { throw MicrophoneRecorderError.inputUnavailable }
+            return (unit, format, buffer)
+        } catch {
+            AudioUnitUninitialize(unit)
+            AudioComponentInstanceDispose(unit)
+            throw error
+        }
+    }
+
+    private static func check(_ status: OSStatus, operation: String) throws {
+        guard status == noErr else { throw MicrophoneRecorderError.audioUnitFailed(operation, status) }
+    }
+}
+
 @MainActor
 final class MicrophoneRecorder: ObservableObject {
     nonisolated static let minimumSamplesForASR = 800
@@ -545,10 +693,9 @@ final class MicrophoneRecorder: ObservableObject {
     @Published private(set) var rmsLevel: Double = 0
 
     var onRMSLevel: ((Double) -> Void)?
-    private var engine: AVAudioEngine?
+    private var inputUnit: MicrophoneInputUnit?
     private var sessionID = UUID()
     private var startTime: Date?
-    private var inputTapInstalled = false
     private var audioTap: MicrophoneAudioTap?
 
     func availableInputDevices() -> [MicrophoneDevice] {
@@ -558,47 +705,32 @@ final class MicrophoneRecorder: ObservableObject {
 
     func start(selectedDeviceID: String, sampleDelivery: LiveSampleDelivery? = nil) async throws {
         await cancel()
-        let engine = AVAudioEngine()
-        let input = engine.inputNode
-        try activateSelectedInputDevice(selectedDeviceID, on: input)
-        let inputFormat = input.inputFormat(forBus: 0)
-        guard inputFormat.channelCount > 0 else { throw MicrophoneRecorderError.inputUnavailable }
-        let activeSessionID = UUID()
-        guard let audioTap = MicrophoneAudioTap(
-            recorder: self,
-            inputFormat: inputFormat,
-            sessionID: activeSessionID,
-            sampleDelivery: sampleDelivery
-        ) else {
-            await sampleDelivery?.closeAndDrain()
-            throw MicrophoneRecorderError.conversionFailed
-        }
-        sessionID = activeSessionID
-        startTime = Date()
-        self.engine = engine
-        self.audioTap = audioTap
-
-        input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat, block: audioTap.makeBlock())
-        inputTapInstalled = true
-        engine.prepare()
         do {
-            try engine.start()
+            let deviceID = try CoreAudioInputDevices.resolveDeviceID(selectedDeviceID)
+            let inputUnit = try MicrophoneInputUnit(deviceID: deviceID)
+            let activeSessionID = UUID()
+            guard let audioTap = MicrophoneAudioTap(
+                recorder: self,
+                inputFormat: inputUnit.format,
+                sessionID: activeSessionID,
+                sampleDelivery: sampleDelivery
+            ) else { throw MicrophoneRecorderError.conversionFailed }
+            sessionID = activeSessionID
+            startTime = Date()
+            self.inputUnit = inputUnit
+            self.audioTap = audioTap
+            try inputUnit.start(audioTap: audioTap)
         } catch {
-            removeInputTapIfNeeded()
-            engine.stop()
-            self.engine = nil
-            self.audioTap = nil
-            startTime = nil
-            _ = await audioTap.finish()
+            await cancel()
+            await sampleDelivery?.closeAndDrain()
             throw error
         }
     }
 
     func stop() async -> (samples: [Float], duration: Double) {
         let duration = startTime.map { Date().timeIntervalSince($0) } ?? 0
-        removeInputTapIfNeeded()
-        engine?.stop()
-        engine = nil
+        inputUnit?.stop()
+        inputUnit = nil
         let captured = await audioTap?.finish() ?? []
         audioTap = nil
         startTime = nil
@@ -609,43 +741,14 @@ final class MicrophoneRecorder: ObservableObject {
     }
 
     func cancel() async {
-        removeInputTapIfNeeded()
-        engine?.stop()
-        engine = nil
+        inputUnit?.stop()
+        inputUnit = nil
         _ = await audioTap?.finish()
         audioTap = nil
         startTime = nil
         sessionID = UUID()
         rmsLevel = 0
         onRMSLevel?(0)
-    }
-
-    private func removeInputTapIfNeeded() {
-        guard inputTapInstalled, let engine else { return }
-        engine.inputNode.removeTap(onBus: 0)
-        inputTapInstalled = false
-    }
-
-    private func activateSelectedInputDevice(_ selectedDeviceID: String, on input: AVAudioInputNode) throws {
-        guard selectedDeviceID != MicrophoneDevice.systemDefault.id else { return }
-        guard var audioDeviceID = CoreAudioInputDevices.audioDeviceID(for: selectedDeviceID) else {
-            throw MicrophoneRecorderError.selectedDeviceUnavailable(selectedDeviceID)
-        }
-        guard let audioUnit = input.audioUnit else {
-            throw MicrophoneRecorderError.inputUnavailable
-        }
-
-        let status = AudioUnitSetProperty(
-            audioUnit,
-            kAudioOutputUnitProperty_CurrentDevice,
-            kAudioUnitScope_Global,
-            0,
-            &audioDeviceID,
-            UInt32(MemoryLayout<AudioDeviceID>.size)
-        )
-        guard status == noErr else {
-            throw MicrophoneRecorderError.deviceSelectionFailed(status)
-        }
     }
 
     fileprivate func updateRMSLevel(_ level: Double, sessionID: UUID) {

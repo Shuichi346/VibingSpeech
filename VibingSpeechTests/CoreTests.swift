@@ -150,6 +150,55 @@ final class CoreTests: XCTestCase {
         let batches = await collector.snapshot()
         XCTAssertEqual(batches, [[1, 2], [3]])
     }
+
+    @MainActor
+    func testUnavailableMicrophoneDoesNotFallBackAndClosesLiveDelivery() async {
+        let recorder = MicrophoneRecorder()
+        let collector = SampleBatchCollector()
+        let delivery = LiveSampleDelivery { await collector.append($0) }
+        let missingUID = "VibingSpeech-missing-\(UUID().uuidString)"
+        do {
+            try await recorder.start(selectedDeviceID: missingUID, sampleDelivery: delivery)
+            XCTFail("An unavailable explicit microphone must not fall back to another input")
+        } catch MicrophoneRecorderError.selectedDeviceUnavailable(let uid) {
+            XCTAssertEqual(uid, missingUID)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        delivery.enqueue([1])
+        await delivery.closeAndDrain()
+        let batches = await collector.snapshot()
+        XCTAssertTrue(batches.isEmpty)
+        let capture = await recorder.stop()
+        XCTAssertTrue(capture.samples.isEmpty)
+        XCTAssertEqual(recorder.rmsLevel, 0)
+    }
+
+    /// Opt in with a connected microphone UID and microphone permission on the test host.
+    /// Keep Bluetooth playback selected to exercise the independent input/output regression.
+    @MainActor
+    func testHardwareMicrophoneSwitchingAndLiveDrain() async throws {
+        guard let uid = ProcessInfo.processInfo.environment["VIBINGSPEECH_TEST_MICROPHONE_UID"] else {
+            throw XCTSkip("Set VIBINGSPEECH_TEST_MICROPHONE_UID to run the hardware regression")
+        }
+        let recorder = MicrophoneRecorder()
+        for selection in [uid, MicrophoneDevice.systemDefault.id, uid] {
+            let collector = SampleBatchCollector()
+            let delivery = LiveSampleDelivery { await collector.append($0) }
+            do {
+                try await recorder.start(selectedDeviceID: selection, sampleDelivery: delivery)
+                try await Task.sleep(for: .seconds(1))
+            } catch {
+                await recorder.cancel()
+                throw error
+            }
+            let capture = await recorder.stop()
+            let delivered = await collector.snapshot().flatMap { $0 }
+            XCTAssertGreaterThan(capture.samples.count, 8_000, "No usable audio from \(selection)")
+            XCTAssertTrue(capture.samples.allSatisfy { $0.isFinite })
+            XCTAssertEqual(delivered, capture.samples, "Stop must drain the converter and live delivery")
+        }
+    }
 }
 
 private actor SampleBatchCollector {

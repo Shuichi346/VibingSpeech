@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed external microphone recording while Bluetooth headphones are selected for playback by binding an input-only Core Audio unit directly to the chosen microphone.
 - Added an explicit Stop Recording command, made asynchronous recording startup cancellable, refreshed microphone permission before capture, and serialized startup with idle model unloading.
 - Replaced per-buffer nearest-neighbor microphone resampling with one persistent `AVAudioConverter`, and drained ordered live-audio delivery before finalization so tail buffers are not dropped or reordered.
 - Connected saved hotwords to the bounded, sanitized context passed to the final Qwen3-ASR transcription.
