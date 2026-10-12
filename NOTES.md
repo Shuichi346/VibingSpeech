@@ -11,7 +11,7 @@
 
 - Recording now enters a cancellable `starting` phase before asynchronous setup, waits for any idle-unload task to finish, and uses an operation identifier to prevent canceled setup, ASR, or LLM work from restoring UI state or committing a result.
 - `MicrophoneAudioTap` now owns one `AVAudioConverter` for the recording session. `MicrophoneRecorder.stop()` and `cancel()` finish the tap and drain `LiveSampleDelivery` before live ASR is stopped or canceled, preserving capture order and final buffered audio.
-- Final batch ASR now receives saved hotwords through `ASRContextBuilder`; the builder deduplicates terms, bounds their lengths, collapses whitespace, and neutralizes Qwen control-token delimiters.
+- Final batch ASR now passes saved hotwords through the `context` argument of `Qwen3ASRModel.generate` in `mlx-audio-swift` `0.1.3`, using `ASRContextBuilder`; the builder deduplicates terms, bounds their lengths, collapses whitespace, and neutralizes Qwen control-token delimiters.
 - History persistence moved off `MainActor` into `HistoryStorage`. Existing JSON arrays migrate to an append-only JSON Lines journal, word counts are repaired during load, timed retention is enforced after launch and as records age, and malformed files are preserved before new data is written.
 - Hotword multi-row deletion now captures record identifiers before mutating the collection, and malformed hotword files are preserved with collision-resistant names instead of being overwritten.
 - All 28 focused unit tests passed, as did the signing-disabled arm64 Release build and Xcode static analysis. The shared UI test target was configured with `--ui-testing`, but its runner could not launch on this machine because no trusted Development Team identity was available (`AppleMobileFileIntegrity` error `-423`); no UI assertion was reached.
@@ -30,7 +30,7 @@
 - Qwen3-ASR repository IDs moved from `aufklarer` to the three supported `mlx-community` variants. The pinned `mlx-audio-swift` `0.1.3` loader already supports their config, tokenizer, quantization, and safetensors layout, so `ASRService` required no loading-path changes.
 - Changing the Hugging Face repository IDs causes the `mlx-community` snapshots to download into separate cache entries; existing `aufklarer` snapshots are neither reused nor removed automatically.
 - The ASR backend was migrated from `speech-swift` `0.0.21` to `mlx-audio-swift` `0.1.3` after reading tag `v0.1.3` source at commit `d302a5c6080d2bb97bae38c7418f82abb76013b6`; the app now links `MLXAudioSTT` and preserves the existing Qwen3-ASR selections and persisted variant values.
-- App-level VAD was removed. The native `StreamingInferenceSession` now drives only the review overlay, is stopped and drained before model reuse, and its text is discarded; the complete mono 16 kHz capture is always passed separately to `Qwen3ASRModel.generate` for the final result.
+- App-level VAD was removed. `MLXAudioSTT` includes `MLXAudioVAD` transitively, but the app does not directly import, configure, or load a VAD model. The native `StreamingInferenceSession` now drives only the review overlay, is stopped and drained before model reuse, and its text is discarded; the complete mono 16 kHz capture is always passed separately to `Qwen3ASRModel.generate` for the final result.
 - Full-buffer generation preserves one Qwen3-ASR context up to the library's 1,200-second default. Longer recordings are independently split at low-energy boundaries by `mlx-audio-swift`, with no transcript context carried across those splits.
 - ASR unload now drains live inference, releases Swift model references, and clears `MLX.Memory` because `mlx-audio-swift` `0.1.3` does not expose `Qwen3ASRModel.unload()`. Recording-operation generation checks prevent canceling during live drain, ASR, or LLM work from producing a late paste or history record.
 - `mlx-swift` was updated to `0.31.6` at revision `0bb916c67f4b9e5c682cbe02a42c701c93ab5021`. The existing constraints in `mlx-audio-swift` `0.1.3` and `mlx-swift-lm` `3.31.4` both accept that version.
@@ -45,6 +45,9 @@
 - `xcodebuild -quiet -skipPackagePluginValidation -project VibingSpeech.xcodeproj -scheme VibingSpeech -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO test` passed all 20 tests. The same Release build command with `build` also passed. The skip flag is required because Xcode otherwise asks to enable the `mlx-swift` `CudaBuild` package plugin before compiling.
 
 ## 2026-05-30
+
+- At this dependency update, saved hotwords were persisted locally, but the public `speech-swift` `0.0.19` `Qwen3ASRModel.transcribe` examples did not establish a prompt-bias or hotword-context API. Active final-batch hotword context was subsequently recorded under 2026-08-20.
+
 
 - Save History previously applied retention only when saving a new record; changing the dropdown to One Day, One Week, or Never did not immediately prune visible/persisted history. `HistoryRepository.applyRetention(_:)` now applies dropdown changes immediately, and `.never` removes the persisted file.
 - ASR model replacement now invalidates stale load completions and calls model/VAD unload paths before storing a new model, so rapid model changes or idle unloads cannot leave old resources active.
@@ -120,3 +123,7 @@
 - The generated archive and `.app` are arm64-only and are appropriate for Apple Silicon Macs. Developer ID distribution still requires a separate signed export and notarization flow.
 - `script/archive.sh` was verified on Apple Silicon and produced `build/VibingSpeech.xcarchive` plus an ad-hoc signed `build/VibingSpeech.app`.
 - Related SwiftPM/Xcode limitation notes: https://forums.swift.org/t/restrict-macos-builds-to-x86-64-with-swiftpm/42239 and https://forums.swift.org/t/adding-excluded-archs-settings-in-package-swift/60784.
+
+## Regression coverage
+
+- Added focused unit coverage for model metadata, word counting, settings persistence, history retention, hotword validation, text processing cleanup, and pasteboard restoration.
