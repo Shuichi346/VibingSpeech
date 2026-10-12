@@ -1,6 +1,8 @@
 # Changelog
 
-## Fixed
+## DATE UNKNOWN
+
+### Fixed
 
 - Fixed external microphone recording while Bluetooth headphones are selected for playback by binding an input-only Core Audio unit directly to the chosen microphone.
 - Fixed multi-row hotword deletion, corrupt hotword-file preservation, and word counts for mixed CJK and Latin text.
@@ -20,7 +22,7 @@
 - Centered the compact recording overlay's processing spinner while preserving the bottom-centered 150 x 33 panel layout.
 - Expanded sidebar navigation row hit targets so clicking empty space within a row now changes the selected section.
 
-## Added
+### Added
 
 - Added an explicit Stop Recording command, made asynchronous recording startup cancellable, refreshed microphone permission before capture, and serialized startup with idle model unloading.
 - Added an optional Live Transcription mode that shows provisional and confirmed ASR text in a bottom overlay while recording, keeps target-app insertion paste-on-stop only, and runs final ASR and Text Processing once on the complete recording.
@@ -31,7 +33,7 @@
 - Added menu-bar lifecycle, global hotkey service, microphone capture, overlay, pasteboard insertion, local settings, hotwords, and history persistence.
 - Connected saved hotwords to the bounded, sanitized context passed to the final Qwen3-ASR transcription.
 
-## Changed
+### Changed
 
 - Moved history disk I/O to an actor-backed JSON Lines journal with legacy-array migration, append-only normal saves, startup and timed retention pruning, and corrupt-file preservation.
 - Migrated Text Processing (LLM) to `mlx-community/Qwen3.5-4B-MLX-4bit`, disabled thinking through the model's chat template, and applied Qwen3.5's recommended general Instruct sampling settings.
