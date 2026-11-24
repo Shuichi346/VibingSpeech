@@ -4,6 +4,7 @@ import Foundation
 final class SettingsStore: ObservableObject {
     @Published var recordingHotkey: RecordingHotkey { didSet { save() } }
     @Published var liveTranscriptionEnabled: Bool { didSet { save() } }
+    @Published var liveASRModelVariant: LiveASRModelVariant { didSet { save() } }
     @Published var textProcessingEnabled: Bool { didSet { save() } }
     @Published var textProcessingPreset: TextProcessingPreset { didSet { save() } }
     @Published var customPrompt: String { didSet { defaults.set(customPrompt, forKey: "customPrompt") } }
@@ -30,7 +31,11 @@ final class SettingsStore: ObservableObject {
         soundFeedbackEnabled = defaults.object(forKey: "soundFeedbackEnabled") as? Bool ?? true
         languageMode = defaults.codableEnum("languageMode") ?? .auto
         appearanceMode = defaults.codableEnum("appearanceMode") ?? .system
-        asrModelVariant = defaults.codableEnum("asrModelVariant") ?? .defaultVariant
+        let savedASRVariant = defaults.string(forKey: "asrModelVariant")
+        asrModelVariant = savedASRVariant.flatMap(ASRModelVariant.migrated) ?? .defaultVariant
+        let savedLiveVariant = defaults.string(forKey: "liveASRModelVariant")
+        liveASRModelVariant = savedLiveVariant.flatMap(LiveASRModelVariant.init(rawValue:))
+            ?? (savedASRVariant?.hasPrefix("qwen3_1_7b") == true ? .qwen3_1_7b_8bit : .qwen3_0_6b_8bit)
         microphoneID = defaults.string(forKey: "microphoneID") ?? MicrophoneDevice.systemDefault.id
         selectedSidebar = defaults.codableEnum("selectedSidebar") ?? .home
         historyRetention = defaults.codableEnum("historyRetention") ?? .forever
@@ -43,6 +48,7 @@ final class SettingsStore: ObservableObject {
     func save() {
         defaults.set(recordingHotkey.rawValue, forKey: "recordingHotkey")
         defaults.set(liveTranscriptionEnabled, forKey: "liveTranscriptionEnabled")
+        defaults.set(liveASRModelVariant.rawValue, forKey: "liveASRModelVariant")
         defaults.set(textProcessingEnabled, forKey: "textProcessingEnabled")
         defaults.set(textProcessingPreset.rawValue, forKey: "textProcessingPreset")
         defaults.set(customPrompt, forKey: "customPrompt")

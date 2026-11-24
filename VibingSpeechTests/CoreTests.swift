@@ -5,22 +5,46 @@ import XCTest
 
 final class CoreTests: XCTestCase {
     func testASRModelVariantMetadata() {
-        XCTAssertEqual(ASRModelVariant.qwen3_0_6b_8bit.displayName, "Qwen3-ASR 0.6B (8-bit)")
-        XCTAssertEqual(
-            ASRModelVariant.qwen3_0_6b_8bit.huggingFaceModelID,
-            "mlx-community/Qwen3-ASR-0.6B-8bit"
-        )
-        XCTAssertEqual(
-            ASRModelVariant.qwen3_1_7b_4bit.huggingFaceModelID,
-            "mlx-community/Qwen3-ASR-1.7B-4bit"
-        )
-        XCTAssertEqual(
-            ASRModelVariant.qwen3_1_7b_8bit.huggingFaceModelID,
-            "mlx-community/Qwen3-ASR-1.7B-8bit"
-        )
-        XCTAssertEqual(ASRModelVariant.qwen3_1_7b_4bit.estimatedDownloadSize, "~1.6 GB")
-        XCTAssertEqual(ASRModelVariant.qwen3_1_7b_8bit.estimatedDownloadSize, "~2.5 GB")
-        XCTAssertEqual(ASRModelVariant.qwen3_1_7b_8bit.estimatedMemory, "~3.5 GB")
+        XCTAssertEqual(ASRModelVariant.allCases.count, 2)
+        XCTAssertEqual(ASRModelVariant.graniteSpeech5.huggingFaceModelID,
+                       "vladers/granite-speech-5.0-470m-turboctc-GGUF")
+        XCTAssertEqual(ASRModelVariant.graniteSpeech5.filename,
+                       "granite-speech-5.0-470m-turboctc-Q8_0.gguf")
+        XCTAssertEqual(ASRModelVariant.qwen3_1_7b_8bit.huggingFaceModelID,
+                       "handy-computer/Qwen3-ASR-1.7B-gguf")
+        XCTAssertEqual(ASRModelVariant.qwen3_1_7b_8bit.filename, "Qwen3-ASR-1.7B-Q8_0.gguf")
+        XCTAssertEqual(LiveASRModelVariant.qwen3_0_6b_8bit.huggingFaceModelID,
+                       "mlx-community/Qwen3-ASR-0.6B-8bit")
+        XCTAssertEqual(LiveASRModelVariant.qwen3_1_7b_8bit.huggingFaceModelID,
+                       "mlx-community/Qwen3-ASR-1.7B-8bit")
+    }
+
+    func testRemovedModelValuesMigrateWithoutBreakingHistory() throws {
+        XCTAssertEqual(try JSONDecoder().decode(ASRModelVariant.self, from: Data("\"qwen3_0_6b_8bit\"".utf8)), .graniteSpeech5)
+        XCTAssertEqual(try JSONDecoder().decode(ASRModelVariant.self, from: Data("\"qwen3_1_7b_4bit\"".utf8)), .qwen3_1_7b_8bit)
+    }
+
+    func testHistoricalModelIdentifiersRemainVerbatim() throws {
+        let record = TranscriptionRecord(finalText: "Saved text", durationSeconds: 1,
+                                         modelVariant: .graniteSpeech5, wasProcessedByLLM: false)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(record)) as? [String: Any])
+        object["modelVariant"] = "qwen3_1_7b_4bit"
+        let decoded = try JSONDecoder().decode(TranscriptionRecord.self, from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertEqual(decoded.modelVariant, "qwen3_1_7b_4bit")
+        XCTAssertEqual(try JSONDecoder().decode(TranscriptionRecord.self, from: JSONEncoder().encode(decoded)), decoded)
+    }
+
+    @MainActor
+    func testSettingsMigrateFinalAndLiveModelsSeparately() {
+        let name = "VibingSpeech-model-migration-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        defaults.set("qwen3_1_7b_4bit", forKey: "asrModelVariant")
+        let settings = SettingsStore(defaults: defaults)
+        XCTAssertEqual(settings.asrModelVariant, .qwen3_1_7b_8bit)
+        XCTAssertEqual(settings.liveASRModelVariant, .qwen3_1_7b_8bit)
+        settings.save()
+        XCTAssertEqual(defaults.string(forKey: "asrModelVariant"), "qwen3_1_7b_8bit")
     }
 
     func testPromptGenerationUsesSelectedLanguage() {
@@ -97,16 +121,18 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(buffer.snapshot, .empty)
     }
 
-    func testTextProcessingUsesQwen35NonThinkingConfiguration() {
-        XCTAssertEqual(TextProcessingService.modelIdentifier, "mlx-community/Qwen3.5-4B-MLX-4bit")
-        XCTAssertEqual(TextProcessingService.maxOutputTokens, 16_384)
-        XCTAssertEqual(TextProcessingService.generationTemperature, 0.7)
-        XCTAssertEqual(TextProcessingService.generationTopP, 0.8)
-        XCTAssertEqual(TextProcessingService.generationTopK, 20)
-        XCTAssertEqual(TextProcessingService.generationMinP, 0)
-        XCTAssertEqual(TextProcessingService.generationPresencePenalty, 1.5)
-        XCTAssertEqual(TextProcessingService.generationRepetitionPenalty, 1)
-        XCTAssertEqual(TextProcessingService.chatTemplateContext["enable_thinking"] as? Bool, false)
+    func testTextProcessingSendsNonThinkingLFMRequest() throws {
+        XCTAssertEqual(TextProcessingService.modelIdentifier, "LiquidAI/LFM3-1.7B-GGUF")
+        XCTAssertEqual(TextProcessingService.modelFilename, "LFM3-1.7B-Q6_K.gguf")
+        let body = TextProcessingBackend.requestBody(text: "helo", systemPrompt: "Fix typos.")
+        let data = try JSONSerialization.data(withJSONObject: body)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual((json["temperature"] as? NSNumber)?.floatValue, 0.1)
+        XCTAssertEqual(json["top_k"] as? Int, 50)
+        XCTAssertEqual((json["repeat_penalty"] as? NSNumber)?.floatValue, 1.1)
+        XCTAssertEqual((json["chat_template_kwargs"] as? [String: Bool])?["enable_thinking"], false)
+        let messages = try XCTUnwrap(json["messages"] as? [[String: String]])
+        XCTAssertEqual(messages, [["role": "system", "content": "Fix typos."], ["role": "user", "content": "helo"]])
     }
 
     func testShortAudioIsRejectedBeforeASRModelUse() async {

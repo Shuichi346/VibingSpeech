@@ -20,10 +20,10 @@
 		10000000000000000000000B /* PersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000B /* PersistenceTests.swift */; };
 		10000000000000000000000C /* VibingSpeechUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000C /* VibingSpeechUITests.swift */; };
 		10000000000000000000000D /* MLXAudioSTT in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000002 /* MLXAudioSTT */; };
-		100000000000000000000010 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000005 /* MLXLLM */; };
-		100000000000000000000011 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000006 /* MLXLMCommon */; };
-		100000000000000000000012 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000007 /* HuggingFace */; };
-		100000000000000000000013 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000008 /* Tokenizers */; };
+		100000000000000000000020 /* GGUFRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000020 /* GGUFRuntime.swift */; };
+		100000000000000000000021 /* GGUFRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000021 /* GGUFRuntimeTests.swift */; };
+		100000000000000000000022 /* TranscribeRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000020 /* TranscribeRuntime */; };
+		100000000000000000000023 /* TranscribeThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000023 /* TranscribeThirdPartyNotices.txt */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -61,6 +61,9 @@
 		20000000000000000000000F /* VibingSpeechTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VibingSpeechTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		200000000000000000000010 /* VibingSpeechUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VibingSpeechUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		200000000000000000000011 /* VibingSpeech.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VibingSpeech.entitlements; sourceTree = "<group>"; };
+		200000000000000000000020 /* GGUFRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GGUFRuntime.swift; sourceTree = "<group>"; };
+		200000000000000000000021 /* GGUFRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GGUFRuntimeTests.swift; sourceTree = "<group>"; };
+		200000000000000000000023 /* TranscribeThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = TranscribeThirdPartyNotices.txt; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -69,10 +72,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				10000000000000000000000D /* MLXAudioSTT in Frameworks */,
-				100000000000000000000010 /* MLXLLM in Frameworks */,
-				100000000000000000000011 /* MLXLMCommon in Frameworks */,
-				100000000000000000000012 /* HuggingFace in Frameworks */,
-				100000000000000000000013 /* Tokenizers in Frameworks */,
+				100000000000000000000022 /* TranscribeRuntime in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -156,6 +156,7 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000005 /* Services.swift */,
+				200000000000000000000020 /* GGUFRuntime.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -182,6 +183,7 @@
 			children = (
 				20000000000000000000000A /* CoreTests.swift */,
 				20000000000000000000000B /* PersistenceTests.swift */,
+				200000000000000000000021 /* GGUFRuntimeTests.swift */,
 			);
 			path = VibingSpeechTests;
 			sourceTree = "<group>";
@@ -198,6 +200,7 @@
 			isa = PBXGroup;
 			children = (
 				200000000000000000000011 /* VibingSpeech.entitlements */,
+				200000000000000000000023 /* TranscribeThirdPartyNotices.txt */,
 				20000000000000000000000D /* Info.plist */,
 				200000000000000000000009 /* Assets.xcassets */,
 			);
@@ -230,10 +233,7 @@
 			name = VibingSpeech;
 			packageProductDependencies = (
 				A00000000000000000000002 /* MLXAudioSTT */,
-				A00000000000000000000005 /* MLXLLM */,
-				A00000000000000000000006 /* MLXLMCommon */,
-				A00000000000000000000007 /* HuggingFace */,
-				A00000000000000000000008 /* Tokenizers */,
+				A00000000000000000000020 /* TranscribeRuntime */,
 			);
 			productName = VibingSpeech;
 			productReference = 20000000000000000000000E /* VibingSpeech.app */;
@@ -309,9 +309,7 @@
 			mainGroup = 600000000000000000000001;
 			packageReferences = (
 				A00000000000000000000001 /* XCRemoteSwiftPackageReference "mlx-audio-swift" */,
-				A00000000000000000000009 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
-				A0000000000000000000000A /* XCRemoteSwiftPackageReference "swift-huggingface" */,
-				A0000000000000000000000B /* XCRemoteSwiftPackageReference "swift-transformers" */,
+				A00000000000000000000021 /* XCLocalSwiftPackageReference "Packages/TranscribeRuntime" */,
 			);
 			productRefGroup = 600000000000000000000002 /* Products */;
 			projectDirPath = "";
@@ -330,6 +328,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000009 /* Assets.xcassets in Resources */,
+				100000000000000000000023 /* TranscribeThirdPartyNotices.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -359,6 +358,7 @@
 				100000000000000000000003 /* Models.swift in Sources */,
 				100000000000000000000004 /* Repositories.swift in Sources */,
 				100000000000000000000005 /* Services.swift in Sources */,
+				100000000000000000000020 /* GGUFRuntime.swift in Sources */,
 				100000000000000000000006 /* ContentView.swift in Sources */,
 				100000000000000000000007 /* RecordingOverlay.swift in Sources */,
 				100000000000000000000008 /* Formatters.swift in Sources */,
@@ -371,6 +371,7 @@
 			files = (
 				10000000000000000000000A /* CoreTests.swift in Sources */,
 				10000000000000000000000B /* PersistenceTests.swift in Sources */,
+				100000000000000000000021 /* GGUFRuntimeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -525,7 +526,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_INTENTS_METADATA_GENERATION = NO;
@@ -539,8 +540,9 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.2.6;
+				MARKETING_VERSION = 2.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shuichi.VibingSpeech;
+				REMOVE_HEADERS_FROM_EMBEDDED_BUNDLES = NO;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -558,7 +560,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_INTENTS_METADATA_GENERATION = NO;
@@ -572,8 +574,9 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.2.6;
+				MARKETING_VERSION = 2.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shuichi.VibingSpeech;
+				REMOVE_HEADERS_FROM_EMBEDDED_BUNDLES = NO;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -726,61 +729,25 @@
 				version = 0.1.3;
 			};
 		};
-		A00000000000000000000009 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
-			requirement = {
-				kind = exactVersion;
-				version = 3.31.4;
-			};
-		};
-		A0000000000000000000000A /* XCRemoteSwiftPackageReference "swift-huggingface" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/huggingface/swift-huggingface.git";
-			requirement = {
-				kind = exactVersion;
-				version = 0.9.0;
-			};
-			traits = (
-			);
-		};
-		A0000000000000000000000B /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/huggingface/swift-transformers";
-			requirement = {
-				kind = exactVersion;
-				version = 1.3.3;
-			};
-			traits = (
-			);
-		};
 /* End XCRemoteSwiftPackageReference section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		A00000000000000000000021 /* XCLocalSwiftPackageReference "Packages/TranscribeRuntime" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/TranscribeRuntime;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
+		A00000000000000000000020 /* TranscribeRuntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000021 /* XCLocalSwiftPackageReference "Packages/TranscribeRuntime" */;
+			productName = TranscribeRuntime;
+		};
 		A00000000000000000000002 /* MLXAudioSTT */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A00000000000000000000001 /* XCRemoteSwiftPackageReference "mlx-audio-swift" */;
 			productName = MLXAudioSTT;
-		};
-		A00000000000000000000005 /* MLXLLM */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000009 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
-			productName = MLXLLM;
-		};
-		A00000000000000000000006 /* MLXLMCommon */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000009 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
-			productName = MLXLMCommon;
-		};
-		A00000000000000000000007 /* HuggingFace */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A0000000000000000000000A /* XCRemoteSwiftPackageReference "swift-huggingface" */;
-			productName = HuggingFace;
-		};
-		A00000000000000000000008 /* Tokenizers */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A0000000000000000000000B /* XCRemoteSwiftPackageReference "swift-transformers" */;
-			productName = Tokenizers;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -7,7 +7,8 @@ struct TranscriptionRecord: Codable, Identifiable, Equatable {
     var timestamp: Date
     var wordCount: Int
     var durationSeconds: Double
-    var modelVariant: ASRModelVariant
+    // Historical model identifiers remain verbatim when a selection is removed.
+    var modelVariant: String
     var wasProcessedByLLM: Bool
 
     init(
@@ -25,7 +26,7 @@ struct TranscriptionRecord: Codable, Identifiable, Equatable {
         self.timestamp = timestamp
         self.wordCount = WordCounter.count(finalText)
         self.durationSeconds = durationSeconds
-        self.modelVariant = modelVariant
+        self.modelVariant = modelVariant.rawValue
         self.wasProcessedByLLM = wasProcessedByLLM
     }
 }

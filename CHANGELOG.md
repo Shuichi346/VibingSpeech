@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-11-24
+
+### Added
+
+- Added a separate live MLX model picker and shared Hugging Face GGUF caching with SHA-256 verification.
+- Added an app-owned llama.cpp server with six nondefault port candidates, authenticated readiness checks, and shutdown on disable, cancellation, idle unload, and app exit.
+
+### Changed
+
+- Updated the app identity to version 2.3.0 (build 2) in both Debug and Release configurations.
+- Refreshed the English and Japanese READMEs with the current model/runtime split, setup and usage, cache and server lifecycle, temporary-directory test command, and ad-hoc archive signing; repaired Japanese navigation anchors and labeled screenshots from the earlier model configuration.
+- Switched final ASR to transcribe.cpp with multilingual Granite Speech 5.0 470M Q8_0 and Qwen3-ASR 1.7B Q8_0, while retaining MLX models for live review.
+- Replaced Qwen3.5 MLX Text Processing with LFM3 1.7B Q6_K through llama.cpp in non-thinking mode.
+- Migrated removed ASR settings while preserving saved history and its original model identifiers.
+
+### Removed
+
+- Removed the Qwen3-ASR 1.7B 4-bit model selection and obsolete MLX Text Processing implementation and direct package links.
+
 ## DATE UNKNOWN
 
 ### Fixed

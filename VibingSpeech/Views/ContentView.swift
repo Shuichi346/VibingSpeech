@@ -392,7 +392,19 @@ private struct SettingsCard: View {
                         .toggleStyle(.switch)
                         .disabled(coordinator.phase != .idle)
                 } footer: {
-                    Text("Shows live text in the overlay and still pastes once when recording stops.")
+                    Text("Uses a separate MLX model for live review. The complete recording is transcribed with the GGUF model after stop.")
+                }
+                if settings.liveTranscriptionEnabled {
+                    Divider()
+                    SettingsRow("Live Model") {
+                        Picker("", selection: $settings.liveASRModelVariant) {
+                            ForEach(LiveASRModelVariant.allCases) { variant in
+                                Text(variant.displayName).tag(variant)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .disabled(coordinator.phase != .idle)
+                    }
                 }
             }
 
@@ -436,7 +448,7 @@ private struct SettingsCard: View {
                     }
                     Divider()
                     SettingsRow("Model") {
-                        Text(TextProcessingService.modelIdentifier)
+                        Text("LFM3 1.7B (Q6_K · non-thinking)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -464,7 +476,7 @@ private struct SettingsCard: View {
 
                 Divider()
 
-                SettingsRow("ASR Model") {
+                SettingsRow("Final ASR Model") {
                     Picker("", selection: $settings.asrModelVariant) {
                         ForEach(ASRModelVariant.allCases) { variant in
                             Text("\(variant.displayName) (\(variant.estimatedDownloadSize))").tag(variant)
@@ -588,7 +600,7 @@ private struct HotwordsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Hotword Enhancement")
                         .font(.headline)
-                    Text("Add proper nouns, terms, names to improve recognition accuracy.")
+                    Text("Vocabulary hints apply to final Qwen3-ASR transcription. Granite CTC does not support hotword hints.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

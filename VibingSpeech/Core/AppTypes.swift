@@ -1,45 +1,84 @@
 import Foundation
 
-enum ASRModelVariant: String, CaseIterable, Codable, Identifiable {
-    case qwen3_0_6b_8bit
-    case qwen3_1_7b_4bit
+enum ASRModelVariant: String, CaseIterable, Codable, Identifiable, Sendable {
+    case graniteSpeech5 = "granite_speech_5_470m_q8"
     case qwen3_1_7b_8bit
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .qwen3_0_6b_8bit: "Qwen3-ASR 0.6B (8-bit)"
-        case .qwen3_1_7b_4bit: "Qwen3-ASR 1.7B (4-bit)"
-        case .qwen3_1_7b_8bit: "Qwen3-ASR 1.7B (8-bit)"
+        case .graniteSpeech5: "Granite Speech 5.0 470M (Q8_0)"
+        case .qwen3_1_7b_8bit: "Qwen3-ASR 1.7B (Q8_0)"
         }
     }
 
     var huggingFaceModelID: String {
         switch self {
-        case .qwen3_0_6b_8bit: "mlx-community/Qwen3-ASR-0.6B-8bit"
-        case .qwen3_1_7b_4bit: "mlx-community/Qwen3-ASR-1.7B-4bit"
-        case .qwen3_1_7b_8bit: "mlx-community/Qwen3-ASR-1.7B-8bit"
+        case .graniteSpeech5: "vladers/granite-speech-5.0-470m-turboctc-GGUF"
+        case .qwen3_1_7b_8bit: "handy-computer/Qwen3-ASR-1.7B-gguf"
+        }
+    }
+
+    var filename: String {
+        switch self {
+        case .graniteSpeech5: "granite-speech-5.0-470m-turboctc-Q8_0.gguf"
+        case .qwen3_1_7b_8bit: "Qwen3-ASR-1.7B-Q8_0.gguf"
         }
     }
 
     var estimatedDownloadSize: String {
         switch self {
-        case .qwen3_0_6b_8bit: "~1.0 GB"
-        case .qwen3_1_7b_4bit: "~1.6 GB"
-        case .qwen3_1_7b_8bit: "~2.5 GB"
+        case .graniteSpeech5: "~520 MB"
+        case .qwen3_1_7b_8bit: "~2.2 GB"
         }
     }
 
     var estimatedMemory: String {
         switch self {
-        case .qwen3_0_6b_8bit: "~1.5 GB"
-        case .qwen3_1_7b_4bit: "~3.0 GB"
+        case .graniteSpeech5: "~1.0 GB"
         case .qwen3_1_7b_8bit: "~3.5 GB"
         }
     }
 
-    static let defaultVariant: ASRModelVariant = .qwen3_0_6b_8bit
+    static let defaultVariant: ASRModelVariant = .graniteSpeech5
+
+    // Migrate removed selections without discarding existing history records.
+    static func migrated(_ value: String) -> ASRModelVariant? {
+        switch value {
+        case "qwen3_0_6b_8bit": .graniteSpeech5
+        case "qwen3_1_7b_4bit": .qwen3_1_7b_8bit
+        default: ASRModelVariant(rawValue: value)
+        }
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+        guard let variant = Self.migrated(value) else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown ASR model: \(value)")
+        }
+        self = variant
+    }
+}
+
+enum LiveASRModelVariant: String, CaseIterable, Identifiable, Sendable {
+    case qwen3_0_6b_8bit
+    case qwen3_1_7b_8bit
+
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .qwen3_0_6b_8bit: "Qwen3-ASR 0.6B (MLX 8-bit)"
+        case .qwen3_1_7b_8bit: "Qwen3-ASR 1.7B (MLX 8-bit)"
+        }
+    }
+    var huggingFaceModelID: String {
+        switch self {
+        case .qwen3_0_6b_8bit: "mlx-community/Qwen3-ASR-0.6B-8bit"
+        case .qwen3_1_7b_8bit: "mlx-community/Qwen3-ASR-1.7B-8bit"
+        }
+    }
 }
 
 enum TextProcessingPreset: String, CaseIterable, Codable, Identifiable {
