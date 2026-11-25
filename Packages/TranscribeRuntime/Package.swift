@@ -15,5 +15,6 @@ let package = Package(
             checksum: "650a42ee7836558d3047f328078be2b8a8d4c6e9f6a0a3f4ea145481ad1c1a86"
         ),
         .target(name: "TranscribeRuntime", dependencies: ["CTranscribe"]),
+        .testTarget(name: "TranscribeRuntimeTests", dependencies: ["TranscribeRuntime"]),
     ]
 )

@@ -255,7 +255,7 @@ private struct ModelActivityPanel: View {
     @ObservedObject var textProcessing: TextProcessingService
 
     private var isVisible: Bool {
-        coordinator.asrModelIsLoading || textProcessing.isLoading
+        coordinator.asrModelIsLoading || coordinator.liveModelIsLoading || textProcessing.isLoading
     }
 
     var body: some View {
@@ -273,6 +273,13 @@ private struct ModelActivityPanel: View {
                     ModelActivityRow(
                         title: "ASR",
                         message: "Downloading or loading \(settings.asrModelVariant.displayName) (\(settings.asrModelVariant.estimatedDownloadSize))"
+                    )
+                }
+
+                if coordinator.liveModelIsLoading {
+                    ModelActivityRow(
+                        title: "Live ASR",
+                        message: "Downloading or loading \(LiveASRModel.displayName) (\(LiveASRModel.estimatedDownloadSize))"
                     )
                 }
 
@@ -392,18 +399,16 @@ private struct SettingsCard: View {
                         .toggleStyle(.switch)
                         .disabled(coordinator.phase != .idle)
                 } footer: {
-                    Text("Uses a separate MLX model for live review. The complete recording is transcribed with the GGUF model after stop.")
+                    Text("Uses Nemotron 3.5 for live review. Final transcription still runs on the complete recording after stop.")
                 }
                 if settings.liveTranscriptionEnabled {
                     Divider()
                     SettingsRow("Live Model") {
-                        Picker("", selection: $settings.liveASRModelVariant) {
-                            ForEach(LiveASRModelVariant.allCases) { variant in
-                                Text(variant.displayName).tag(variant)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .disabled(coordinator.phase != .idle)
+                        Text(LiveASRModel.displayName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } footer: {
+                        Text("Japanese and multilingual streaming · \(LiveASRModel.estimatedDownloadSize) download")
                     }
                 }
             }

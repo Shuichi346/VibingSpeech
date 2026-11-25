@@ -13,36 +13,21 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(ASRModelVariant.qwen3_1_7b_8bit.huggingFaceModelID,
                        "handy-computer/Qwen3-ASR-1.7B-gguf")
         XCTAssertEqual(ASRModelVariant.qwen3_1_7b_8bit.filename, "Qwen3-ASR-1.7B-Q8_0.gguf")
-        XCTAssertEqual(LiveASRModelVariant.qwen3_0_6b_8bit.huggingFaceModelID,
-                       "mlx-community/Qwen3-ASR-0.6B-8bit")
-        XCTAssertEqual(LiveASRModelVariant.qwen3_1_7b_8bit.huggingFaceModelID,
-                       "mlx-community/Qwen3-ASR-1.7B-8bit")
-    }
-
-    func testRemovedModelValuesMigrateWithoutBreakingHistory() throws {
-        XCTAssertEqual(try JSONDecoder().decode(ASRModelVariant.self, from: Data("\"qwen3_0_6b_8bit\"".utf8)), .graniteSpeech5)
-        XCTAssertEqual(try JSONDecoder().decode(ASRModelVariant.self, from: Data("\"qwen3_1_7b_4bit\"".utf8)), .qwen3_1_7b_8bit)
-    }
-
-    func testHistoricalModelIdentifiersRemainVerbatim() throws {
-        let record = TranscriptionRecord(finalText: "Saved text", durationSeconds: 1,
-                                         modelVariant: .graniteSpeech5, wasProcessedByLLM: false)
-        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(record)) as? [String: Any])
-        object["modelVariant"] = "qwen3_1_7b_4bit"
-        let decoded = try JSONDecoder().decode(TranscriptionRecord.self, from: JSONSerialization.data(withJSONObject: object))
-        XCTAssertEqual(decoded.modelVariant, "qwen3_1_7b_4bit")
-        XCTAssertEqual(try JSONDecoder().decode(TranscriptionRecord.self, from: JSONEncoder().encode(decoded)), decoded)
+        XCTAssertEqual(LiveASRModel.huggingFaceModelID,
+                       "handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf")
+        XCTAssertEqual(LiveASRModel.filename, "nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf")
     }
 
     @MainActor
-    func testSettingsMigrateFinalAndLiveModelsSeparately() {
+    func testSettingsPreserveFinalModelAndLiveTranscription() {
         let name = "VibingSpeech-model-migration-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defer { defaults.removePersistentDomain(forName: name) }
-        defaults.set("qwen3_1_7b_4bit", forKey: "asrModelVariant")
+        defaults.set("qwen3_1_7b_8bit", forKey: "asrModelVariant")
+        defaults.set(true, forKey: "liveTranscriptionEnabled")
         let settings = SettingsStore(defaults: defaults)
         XCTAssertEqual(settings.asrModelVariant, .qwen3_1_7b_8bit)
-        XCTAssertEqual(settings.liveASRModelVariant, .qwen3_1_7b_8bit)
+        XCTAssertTrue(settings.liveTranscriptionEnabled)
         settings.save()
         XCTAssertEqual(defaults.string(forKey: "asrModelVariant"), "qwen3_1_7b_8bit")
     }
@@ -84,41 +69,32 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(WordCounter.count("今日は晴れです"), 7)
         XCTAssertEqual(WordCounter.count("明日は雨?"), 4)
         XCTAssertEqual(WordCounter.count("hello 世界"), 3)
-        XCTAssertEqual(WordCounter.count("Swift と MLX"), 3)
+        XCTAssertEqual(WordCounter.count("Swift と GGUF"), 3)
         XCTAssertEqual(WordCounter.count("今日は晴れです Hello world"), 9)
     }
 
-    func testLiveTranscriptBufferReplacesPartialAndCommitsFinalSegments() {
-        var buffer = LiveTranscriptBuffer()
-        buffer.updatePartial(" Hello ")
-        XCTAssertEqual(buffer.snapshot.partialText, "Hello")
-        XCTAssertEqual(buffer.combinedText, "Hello")
-
-        buffer.updatePartial("Hello, the weather is nice")
-        XCTAssertEqual(buffer.snapshot.partialText, "Hello, the weather is nice")
-
-        buffer.commitFinal("Hello, the weather is nice today as well.")
-        XCTAssertEqual(buffer.snapshot.finalizedText, "Hello, the weather is nice today as well.")
-        XCTAssertEqual(buffer.snapshot.partialText, "")
-
-        buffer.updatePartial("I would like to talk")
-        XCTAssertEqual(
-            buffer.combinedText,
-            "Hello, the weather is nice today as well. I would like to talk"
-        )
+    func testLiveLanguageUsesNemotronLocalesIncludingExplicitAuto() {
+        XCTAssertEqual(LiveASRModel.language(for: .auto), "auto")
+        XCTAssertEqual(LiveASRModel.language(for: .english), "en-US")
+        XCTAssertEqual(LiveASRModel.language(for: .japanese), "ja-JP")
+        XCTAssertEqual(LiveASRModel.language(for: .chinese), "zh-CN")
     }
 
-    func testLiveTranscriptBufferFlushesPartialAndResetsOnCancel() {
-        var buffer = LiveTranscriptBuffer()
-        buffer.commitFinal("First sentence.")
-        buffer.updatePartial("Second sentence")
-        buffer.commitPartialIfNeeded()
-
-        XCTAssertEqual(buffer.finalizedText, "First sentence. Second sentence")
-        XCTAssertEqual(buffer.partialText, "")
-
-        buffer.reset()
-        XCTAssertEqual(buffer.snapshot, .empty)
+    @MainActor
+    func testNativeLiveSnapshotsReplaceTentativeTextAndResetWithoutAddingSpaces() {
+        let state = RecordingOverlayState()
+        state.resetLiveTranscript(visible: true)
+        state.applyLiveTranscript(LiveTranscriptSnapshot(
+            finalizedText: "ガレージ", partialText: "バント", statusMessage: nil
+        ))
+        state.applyLiveTranscript(LiveTranscriptSnapshot(
+            finalizedText: "ガレージ", partialText: "バンド", statusMessage: nil
+        ))
+        XCTAssertEqual(state.liveFinalizedText + state.livePartialText, "ガレージバンド")
+        state.resetLiveTranscript(visible: false)
+        XCTAssertEqual(state.liveFinalizedText, "")
+        XCTAssertEqual(state.livePartialText, "")
+        XCTAssertFalse(state.liveTranscriptVisible)
     }
 
     func testTextProcessingSendsNonThinkingLFMRequest() throws {

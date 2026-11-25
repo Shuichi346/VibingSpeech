@@ -13,6 +13,7 @@ APP_ENTITLEMENTS="$ROOT_DIR/VibingSpeech/Resources/VibingSpeech.entitlements"
 
 RESOLVED_BUILD_SETTINGS="$(
   /usr/bin/xcodebuild \
+    -packageAuthorizationProvider netrc \
     -project "$PROJECT" \
     -scheme "$SCHEME" \
     -configuration "$CONFIGURATION" \
@@ -39,6 +40,7 @@ rm -rf "$ARCHIVE_PATH" "$APP_PATH"
 # Pass ARCHS=arm64 to Swift package builds.
 # Archive unsigned here; signing is done in the steps below.
 /usr/bin/xcodebuild archive \
+  -packageAuthorizationProvider netrc \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
   -configuration "$CONFIGURATION" \

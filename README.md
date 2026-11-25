@@ -41,7 +41,7 @@ VibingSpeech lives in the menu bar. Audio and text inference run on your Mac; mo
 ## Requirements
 
 - An **Apple Silicon Mac** running **macOS 26.0 or later**. Intel Macs are unsupported.
-- Xcode with Swift 6.2 or later and the Metal Toolchain installed. Development was verified with Xcode 27.2 and Swift 6.4.2.
+- Xcode with Swift 6.2 or later. Development was verified with Xcode 27.2 and Swift 6.4.2.
 - Microphone permission for recording and Accessibility permission for global hotkeys and cross-app paste.
 - Internet access for initial dependency and model downloads, plus disk space for the selected models.
 - `llama` for optional Text Processing. If it is missing, the app runs `curl -LsSf https://llama.app/install.sh | sh`. An existing installation is used without replacement.
@@ -56,6 +56,8 @@ Clone or download this repository, then run from its root:
 
 The script stops any running VibingSpeech process, builds the Debug app through `VibingSpeech.xcodeproj`, launches it, and checks that it is running. Build products are stored in `DerivedData/`. The Xcode project is the primary build entry point; the local Swift package supplies the native ASR wrapper.
 
+Build scripts select the netrc package authorization provider to avoid Keychain prompts when fetching public dependencies.
+
 Use `./script/build_and_run.sh` for a normal launch, or pass `--logs`, `--telemetry`, or `--debug` for diagnostics.
 
 ## Usage
@@ -67,7 +69,7 @@ Use `./script/build_and_run.sh` for a normal launch, or pass `--logs`, `--teleme
 
 Right Option is the default hotkey; Left Control is also available. A long press records until the key is released. **Escape** cancels recording or processing.
 
-Enable **Live Transcription** to review text while speaking and choose a separate **Live Model**. Live text is never pasted. After stopping, the complete mono 16 kHz recording is transcribed in one native batch call, then optionally processed by the LLM before insertion. Model input limits are reported as errors rather than silently truncating audio.
+Enable **Live Transcription** to review text while speaking with **Nemotron 3.5 ASR Streaming 0.6B**. The Live Model row shows the fixed Q8_0 model. On first use, Home shows model preparation while the roughly 750 MB download and loading finish; recording starts afterward. Live text is never pasted. After stopping, the complete mono 16 kHz recording is transcribed in one native batch call, then optionally processed by the LLM before insertion. Model input limits are reported as errors rather than silently truncating audio.
 
 Enable **Text Processing (LLM)** to select **Fix Typos**, **Bullet Points**, or **Custom**. The Language setting controls the requested output language; Auto follows the detected language when available, otherwise the input text.
 
@@ -75,25 +77,27 @@ Use **Hotwords** for final Qwen3-ASR vocabulary hints; Granite CTC does not supp
 
 ## Models
 
-Final ASR and live review use separate models. The former 1.7B 4-bit option is no longer available.
+Final ASR and live review use separate models. Qwen MLX live models and the former 1.7B 4-bit option have been removed. Retired model preferences are not migrated; an unknown saved final-ASR selection uses the current default.
 
 | Purpose | Model | Format | Runtime | Approximate download |
 | --- | --- | --- | --- | --- |
 | Final ASR, default | [Granite Speech 5.0 470M TurboCTC](https://huggingface.co/vladers/granite-speech-5.0-470m-turboctc-GGUF) | GGUF Q8_0 | transcribe.cpp | 520 MB |
 | Final ASR | [Qwen3-ASR 1.7B](https://huggingface.co/handy-computer/Qwen3-ASR-1.7B-gguf) | GGUF Q8_0 | transcribe.cpp | 2.2 GB |
+| Live review | [Nemotron 3.5 ASR Streaming 0.6B](https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf) | GGUF Q8_0 | transcribe.cpp | 750 MB |
 | Optional Text Processing | [LFM3 1.7B](https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF) | GGUF Q6_K | llama.cpp, non-thinking | 1.4 GB |
 
 The GGUF filenames are:
 
 - `granite-speech-5.0-470m-turboctc-Q8_0.gguf`
 - `Qwen3-ASR-1.7B-Q8_0.gguf`
+- `nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf`
 - `LFM3-1.7B-Q6_K.gguf`
 
 Qwen3-ASR must use the **handy-computer** conversion. The ggml-org conversion has a different layout intended for llama.cpp and is not interchangeable with this transcribe.cpp model.
 
-Live review retains the MLX 8-bit models [Qwen3-ASR 0.6B](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-8bit) and [Qwen3-ASR 1.7B](https://huggingface.co/mlx-community/Qwen3-ASR-1.7B-8bit). They are loaded when live transcription is used, in addition to the selected final ASR model.
+Live review uses the transcribe.cpp conversion of Nemotron 3.5, with Japanese and multilingual streaming, explicit language selection or Auto, and 240 ms lookahead. It loads when live transcription is used, alongside the selected final ASR model. The stream remains review-only; the final ASR model processes the complete recording separately after stop.
 
-Final ASR uses transcribe.cpp `v0.4.2` through a checksum-pinned XCFramework. Live inference uses `mlx-audio-swift` `0.1.3` with `mlx-swift` `0.31.6`.
+Both live and final ASR use transcribe.cpp `v0.4.2` through a checksum-pinned XCFramework. The app no longer depends on MLX. NVIDIA's official `nemo-speech` installation is not required or modified. Its GGUF format differs from the transcribe.cpp conversion, so an existing official model download cannot be reused directly.
 
 ## Privacy and model lifecycle
 
@@ -128,7 +132,7 @@ Run unit tests without loading models or requesting microphone permission:
 
 ```sh
 xcodebuild -project VibingSpeech.xcodeproj \
-  -skipPackagePluginValidation \
+  -packageAuthorizationProvider netrc \
   -scheme VibingSpeech \
   -configuration Debug \
   -destination 'platform=macOS,arch=arm64' \
@@ -138,9 +142,17 @@ xcodebuild -project VibingSpeech.xcodeproj \
   test
 ```
 
+The native streaming package also has isolated tests:
+
+```sh
+swift test --package-path Packages/TranscribeRuntime --disable-keychain
+```
+
+The four package tests include two model-free checks and two real-model integration checks. The real-model checks are opt-in: set `VIBINGSPEECH_TEST_NEMOTRON_GGUF` to the compatible Q8_0 file and `VIBINGSPEECH_TEST_NEMOTRON_PCM` to mono 16 kHz little-endian float32 PCM. Without those fixtures, only the model-free checks run.
+
 The temporary build location avoids the macOS Documents access prompt encountered when XCTest loads the embedded native framework from a repository under Documents. The shared test action passes `--ui-testing` to keep startup independent of model downloads and microphone hardware.
 
-Tests cover settings migration, historical model identifiers, prompt construction, ordered live audio delivery, history retention and recovery, verified GGUF caching, server port fallback, authentication, cancellation, and shutdown. The opt-in microphone test is skipped unless a test device is configured. UI automation requires a trusted macOS development-signing identity; an ad-hoc archive signature does not supply that identity.
+Tests cover settings persistence, prompt construction, ordered live audio delivery, history retention and recovery, verified GGUF caching, server port fallback, authentication, cancellation, and shutdown. The opt-in microphone test is skipped unless a test device is configured. UI automation requires a trusted macOS development-signing identity; an ad-hoc archive signature does not supply that identity.
 
 ## Release archive and signing
 

@@ -25,6 +25,7 @@ done
 /usr/bin/pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
 /usr/bin/xcodebuild \
+  -packageAuthorizationProvider netrc \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
   -configuration "$CONFIGURATION" \

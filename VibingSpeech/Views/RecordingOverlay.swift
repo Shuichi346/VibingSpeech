@@ -135,17 +135,8 @@ private struct LiveTranscriptOverlayView: View {
                             Text(state.liveStatusMessage ?? "Listening...")
                                 .foregroundStyle(.secondary)
                         } else {
-                            if !state.liveFinalizedText.isEmpty {
-                                Text(state.liveFinalizedText)
-                                    .foregroundStyle(.primary)
-                                    .textSelection(.disabled)
-                            }
-                            if !state.livePartialText.isEmpty {
-                                Text(state.livePartialText)
-                                    .foregroundStyle(.secondary)
-                                    .italic()
-                                    .textSelection(.disabled)
-                            }
+                            Text("\(Text(state.liveFinalizedText).foregroundStyle(.primary))\(Text(state.livePartialText).foregroundStyle(.secondary).italic())")
+                                .textSelection(.disabled)
                         }
                         Color.clear
                             .frame(height: 1)

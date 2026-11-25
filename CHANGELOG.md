@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-11-25
+
+### Fixed
+
+- Fixed Auto language selection for native Nemotron streaming while preserving explicit language choices.
+
+### Added
+
+- Added a Home preparation indicator for the initial Nemotron download and model loading.
+
+### Changed
+
+- Replaced live Qwen3-ASR MLX inference with Nemotron 3.5 ASR Streaming 0.6B Q8_0 through the bundled transcribe.cpp runtime, with Japanese/Auto language support and a fixed Live Model display.
+- Preserved native committed/tentative text boundaries in the live overlay and finalized buffered audio before the separate complete-recording ASR pass.
+- Configured public package resolution in build scripts to avoid macOS Keychain authentication prompts.
+
+### Removed
+
+- Removed the MLX runtime and package dependencies, former live model picker/settings, unused segment-buffer implementation, and compatibility mappings for retired ASR models.
+
 ## 2026-11-24
 
 ### Added

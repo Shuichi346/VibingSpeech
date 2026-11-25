@@ -76,6 +76,7 @@ final class AppCoordinator: ObservableObject {
     @Published var phase: RecordingPhase = .idle
     @Published var asrModelLoaded = false
     @Published var asrModelIsLoading = false
+    @Published private(set) var liveModelIsLoading = false
     @Published var asrStatusMessage = "Loading model..."
     @Published var lastError: String?
     @Published var availableMicrophones: [MicrophoneDevice] = [.systemDefault]
@@ -257,10 +258,11 @@ final class AppCoordinator: ObservableObject {
         liveTranscriptionActive = false
         overlayState.resetLiveTranscript(visible: shouldUseLiveTranscription)
         if shouldUseLiveTranscription {
+            liveModelIsLoading = true
+            defer { liveModelIsLoading = false }
             do {
                 let overlayState = self.overlayState
                 try await asrService.startLiveTranscription(
-                    variant: settings.liveASRModelVariant,
                     languageMode: settings.languageMode,
                     onUpdate: { [weak self] snapshot in
                         Task { @MainActor [weak self] in

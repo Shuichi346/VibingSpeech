@@ -42,41 +42,20 @@ enum ASRModelVariant: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 
     static let defaultVariant: ASRModelVariant = .graniteSpeech5
-
-    // Migrate removed selections without discarding existing history records.
-    static func migrated(_ value: String) -> ASRModelVariant? {
-        switch value {
-        case "qwen3_0_6b_8bit": .graniteSpeech5
-        case "qwen3_1_7b_4bit": .qwen3_1_7b_8bit
-        default: ASRModelVariant(rawValue: value)
-        }
-    }
-
-    init(from decoder: any Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let value = try container.decode(String.self)
-        guard let variant = Self.migrated(value) else {
-            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown ASR model: \(value)")
-        }
-        self = variant
-    }
 }
 
-enum LiveASRModelVariant: String, CaseIterable, Identifiable, Sendable {
-    case qwen3_0_6b_8bit
-    case qwen3_1_7b_8bit
+enum LiveASRModel {
+    static let displayName = "Nemotron 3.5 0.6B (Q8_0)"
+    static let huggingFaceModelID = "handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf"
+    static let filename = "nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf"
+    static let estimatedDownloadSize = "~750 MB"
 
-    var id: String { rawValue }
-    var displayName: String {
-        switch self {
-        case .qwen3_0_6b_8bit: "Qwen3-ASR 0.6B (MLX 8-bit)"
-        case .qwen3_1_7b_8bit: "Qwen3-ASR 1.7B (MLX 8-bit)"
-        }
-    }
-    var huggingFaceModelID: String {
-        switch self {
-        case .qwen3_0_6b_8bit: "mlx-community/Qwen3-ASR-0.6B-8bit"
-        case .qwen3_1_7b_8bit: "mlx-community/Qwen3-ASR-1.7B-8bit"
+    static func language(for mode: LanguageMode) -> String {
+        switch mode {
+        case .auto: "auto"
+        case .english: "en-US"
+        case .japanese: "ja-JP"
+        case .chinese: "zh-CN"
         }
     }
 }

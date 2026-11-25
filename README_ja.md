@@ -45,7 +45,7 @@ Apple Silicon Mac 向けのローカル音声入力アプリです。ホット�
 ## 動作要件
 
 - **macOS 26.0 以降**を搭載した **Apple Silicon Mac**。Intel Mac は非対応です。
-- Swift 6.2 以降を含む Xcode と Metal Toolchain。開発時には Xcode 27.2／Swift 6.4.2 で確認しています。
+- Swift 6.2 以降を含む Xcode。開発時には Xcode 27.2／Swift 6.4.2 で確認しています。
 - 録音用のマイク権限と、グローバルホットキー・アプリ間の貼り付け用のアクセシビリティ権限。
 - 依存パッケージとモデルの初回ダウンロード用のネット接続、および選択したモデルを保存する空き容量。
 - Text Processing を使う場合は `llama`。未導入ならアプリが `curl -LsSf https://llama.app/install.sh | sh` を実行します。導入済みなら既存のものを使用します。
@@ -62,6 +62,8 @@ Apple Silicon Mac 向けのローカル音声入力アプリです。ホット�
 
 このスクリプトは起動中の VibingSpeech を停止し、`VibingSpeech.xcodeproj` から Debug アプリをビルド・起動して、プロセスの存在を確認します。出力先は `DerivedData/` です。アプリ本体は Xcode プロジェクトでビルドし、ローカル Swift パッケージはネイティブ ASR のラッパーを提供します。
 
+ビルドスクリプトはパッケージ認証に netrc を指定し、公開の依存関係を取得するときのキーチェーン確認を避けます。
+
 通常起動には `./script/build_and_run.sh` を使用します。診断用に `--logs`、`--telemetry`、`--debug` も指定できます。
 
 <a id="usage"></a>
@@ -75,7 +77,7 @@ Apple Silicon Mac 向けのローカル音声入力アプリです。ホット�
 
 既定のホットキーは右 Option です。左 Control も選べます。長押しの場合はキーを離すと録音が停止します。**Escape** で録音や処理をキャンセルできます。
 
-録音中のテキストを確認するには **Live Transcription** を有効にし、別の **Live Model** を選びます。ライブ表示は貼り付けられません。停止後にモノラル 16 kHz の録音全体をネイティブ ASR へ一度に渡し、必要に応じて LLM で処理してから挿入します。モデルの入力上限を超えた場合は、音声を黙って切り捨てずエラーを表示します。
+録音中のテキストを確認するには **Live Transcription** を有効にします。**Nemotron 3.5 ASR Streaming 0.6B** を使用し、Live Model 行には固定の Q8_0 モデルを表示します。初回は約750 MB のダウンロードと読み込みの間、Home に準備状況を表示し、準備完了後に録音を開始します。ライブ表示は貼り付けられません。停止後にモノラル 16 kHz の録音全体をネイティブ ASR へ一度に渡し、必要に応じて LLM で処理してから挿入します。モデルの入力上限を超えた場合は、音声を黙って切り捨てずエラーを表示します。
 
 文章を整えるには **Text Processing (LLM)** を有効にし、**Fix Typos**、**Bullet Points**、**Custom** を選びます。Language は出力先の言語を指定します。Auto は検出言語があればそれに従い、なければ入力テキストの言語を使用します。
 
@@ -85,25 +87,27 @@ Apple Silicon Mac 向けのローカル音声入力アプリです。ホット�
 
 ## モデル
 
-確定文字起こしとライブ表示には別々のモデルを使います。従来の 1.7B・4-bit は選択できません。
+確定文字起こしとライブ表示には別々のモデルを使います。ライブ用 Qwen MLX と従来の 1.7B・4-bit は削除済みです。廃止したモデル設定の移行処理はなく、保存済みの確定 ASR 設定を認識できない場合は現在の既定モデルを使います。
 
 | 用途 | モデル | 形式 | 実行エンジン | ダウンロードの目安 |
 | --- | --- | --- | --- | --- |
 | 確定 ASR・既定 | [Granite Speech 5.0 470M TurboCTC](https://huggingface.co/vladers/granite-speech-5.0-470m-turboctc-GGUF) | GGUF Q8_0 | transcribe.cpp | 520 MB |
 | 確定 ASR | [Qwen3-ASR 1.7B](https://huggingface.co/handy-computer/Qwen3-ASR-1.7B-gguf) | GGUF Q8_0 | transcribe.cpp | 2.2 GB |
+| ライブ表示 | [Nemotron 3.5 ASR Streaming 0.6B](https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf) | GGUF Q8_0 | transcribe.cpp | 750 MB |
 | 任意の Text Processing | [LFM3 1.7B](https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF) | GGUF Q6_K | llama.cpp・非推論モード | 1.4 GB |
 
 使用する GGUF ファイルは以下のとおりです。
 
 - `granite-speech-5.0-470m-turboctc-Q8_0.gguf`
 - `Qwen3-ASR-1.7B-Q8_0.gguf`
+- `nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf`
 - `LFM3-1.7B-Q6_K.gguf`
 
 Qwen3-ASR は **handy-computer 版**を使用します。ggml-org 版は llama.cpp 向けの異なる構造のため、この transcribe.cpp 用モデルとは交換できません。
 
-ライブ表示には既存の MLX 8-bit モデル、[Qwen3-ASR 0.6B](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-8bit) と [Qwen3-ASR 1.7B](https://huggingface.co/mlx-community/Qwen3-ASR-1.7B-8bit) を使います。ライブ文字起こしを使用すると、選択した確定 ASR モデルに加えて読み込まれます。
+ライブ表示には transcribe.cpp 用に変換された Nemotron 3.5 を使用します。日本語と多言語のストリーミング、言語指定と Auto、240 ms の先読み処理に対応します。ライブ文字起こしを使うと、選択した確定 ASR モデルに加えて読み込みます。ストリーミングは確認専用で、停止後の確定 ASR は録音全体を別途処理します。
 
-確定 ASR はチェックサムで固定した XCFramework を通じて transcribe.cpp `v0.4.2` を使用します。ライブ推論は `mlx-audio-swift` `0.1.3` と `mlx-swift` `0.31.6` を使用します。
+ライブ・確定 ASR ともに、チェックサムで固定した XCFramework を通じて transcribe.cpp `v0.4.2` を使用します。MLX への依存はありません。NVIDIA 公式の `nemo-speech` の導入は不要で、導入済みの本体やキャッシュも変更しません。公式版と transcribe.cpp 版は GGUF の内部形式が異なるため、公式版で取得済みのモデルはそのまま再利用できません。
 
 <a id="privacy-and-model-lifecycle"></a>
 
@@ -144,7 +148,7 @@ Text Processing は専用の API キーを持つ llama サーバーを `127.0.0.
 
 ```sh
 xcodebuild -project VibingSpeech.xcodeproj \
-  -skipPackagePluginValidation \
+  -packageAuthorizationProvider netrc \
   -scheme VibingSpeech \
   -configuration Debug \
   -destination 'platform=macOS,arch=arm64' \
@@ -154,9 +158,17 @@ xcodebuild -project VibingSpeech.xcodeproj \
   test
 ```
 
+ネイティブのストリーミングパッケージには独立したテストもあります。
+
+```sh
+swift test --package-path Packages/TranscribeRuntime --disable-keychain
+```
+
+パッケージのテストは4件で、モデル不要の確認2件と実モデルの統合テスト2件です。実モデルのテストは任意実行です。`VIBINGSPEECH_TEST_NEMOTRON_GGUF` に対応する Q8_0 ファイルを、`VIBINGSPEECH_TEST_NEMOTRON_PCM` にモノラル 16 kHz・リトルエンディアン float32 の PCM ファイルを指定します。未指定なら、モデル不要のテストだけを実行します。
+
 一時フォルダーを使うのは、Documents 内のリポジトリから XCTest がネイティブ framework を読み込む際に発生した、macOS のファイルアクセス確認を避けるためです。共有スキームのテスト起動引数には `--ui-testing` を指定し、モデルのダウンロードやマイク機器に依存しない構成にしています。
 
-設定の移行、履歴内のモデル識別子、プロンプト生成、ライブ音声の順序、履歴の保存期間と復旧、GGUF キャッシュ検証、ポート切り替え、認証、キャンセル、サーバー停止をテストします。マイク実機テストは対象デバイスを指定しない限りスキップします。UI 自動テストには信頼済みの macOS 開発署名が必要で、アドホック署名ではその開発署名を代替できません。
+設定の保存、プロンプト生成、ライブ音声の順序、履歴の保存期間と復旧、GGUF キャッシュ検証、ポート切り替え、認証、キャンセル、サーバー停止をテストします。マイク実機テストは対象デバイスを指定しない限りスキップします。UI 自動テストには信頼済みの macOS 開発署名が必要で、アドホック署名ではその開発署名を代替できません。
 
 <a id="release-archive-and-signing"></a>
 

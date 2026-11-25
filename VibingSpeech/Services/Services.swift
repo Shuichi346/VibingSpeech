@@ -7,14 +7,6 @@ import Foundation
 import ServiceManagement
 import TranscribeRuntime
 
-#if canImport(MLX)
-import MLX
-#endif
-
-#if canImport(MLXAudioSTT)
-import MLXAudioSTT
-#endif
-
 @MainActor
 final class AppearanceService {
     func apply(_ mode: AppearanceMode) {
@@ -843,63 +835,6 @@ enum TextProcessingServiceError: LocalizedError {
     }
 }
 
-#if canImport(MLX) && canImport(MLXAudioSTT)
-private final class LiveASRSession: @unchecked Sendable {
-    private let session: StreamingInferenceSession
-    private let eventConsumer: Task<Void, Never>
-
-    init(
-        model: Qwen3ASRModel,
-        languageHint: String?,
-        onUpdate: @escaping @Sendable (LiveTranscriptSnapshot) -> Void
-    ) {
-        let session = StreamingInferenceSession(
-            model: model,
-            config: StreamingConfig(language: languageHint)
-        )
-        self.session = session
-        onUpdate(LiveTranscriptSnapshot(finalizedText: "", partialText: "", statusMessage: "Listening..."))
-        eventConsumer = Task {
-            for await event in session.events {
-                Self.handle(event, onUpdate: onUpdate)
-            }
-        }
-    }
-
-    func ingest(samples: [Float]) {
-        guard !samples.isEmpty else { return }
-        session.feedAudio(samples: samples)
-    }
-
-    func finish() async {
-        session.stop()
-        await eventConsumer.value
-    }
-
-    private static func handle(
-        _ event: TranscriptionEvent,
-        onUpdate: @escaping @Sendable (LiveTranscriptSnapshot) -> Void
-    ) {
-        switch event {
-        case .displayUpdate(let confirmedText, let provisionalText):
-            onUpdate(LiveTranscriptSnapshot(
-                finalizedText: confirmedText,
-                partialText: provisionalText,
-                statusMessage: nil
-            ))
-        case .confirmed(let text):
-            onUpdate(LiveTranscriptSnapshot(finalizedText: text, partialText: "", statusMessage: nil))
-        case .provisional(let text):
-            onUpdate(LiveTranscriptSnapshot(finalizedText: "", partialText: text, statusMessage: nil))
-        case .ended(let fullText):
-            onUpdate(LiveTranscriptSnapshot(finalizedText: fullText, partialText: "", statusMessage: nil))
-        case .stats:
-            break
-        }
-    }
-}
-#endif
-
 actor ASRService {
     private(set) var loadedVariant: ASRModelVariant?
     private let native = GGUFTranscriber()
@@ -908,12 +843,14 @@ actor ASRService {
     private var unloadTask: Task<Void, Never>?
     private var inferenceRequestID = UUID()
 
-    #if canImport(MLX) && canImport(MLXAudioSTT)
-    private var liveModel: Qwen3ASRModel?
-    private var liveModelVariant: LiveASRModelVariant?
-    private var liveSession: LiveASRSession?
+    private let liveNative = GGUFStreamingTranscriber()
+    private var liveModelLoaded = false
+    private var liveLoadGeneration = UUID()
+    private var liveLoadTask: (id: UUID, task: Task<Void, Error>)?
     private var liveSessionRequestID = UUID()
-    #endif
+    private var liveSessionActive = false
+    private var liveOnUpdate: (@Sendable (LiveTranscriptSnapshot) -> Void)?
+    private var lastLiveSnapshot: LiveTranscriptSnapshot?
 
     func load(variant: ASRModelVariant) async throws {
         if loadedVariant == variant { return }
@@ -976,71 +913,128 @@ actor ASRService {
     }
 
     private func releaseLiveModels() async {
-        await finishLiveTranscription()
-        #if canImport(MLX) && canImport(MLXAudioSTT)
-        liveModel = nil
-        liveModelVariant = nil
-        MLX.Memory.clearCache()
-        #endif
+        await cancelLiveTranscription()
+        await liveNative.unload()
+        liveModelLoaded = false
     }
 
     func startLiveTranscription(
-        variant: LiveASRModelVariant,
         languageMode: LanguageMode,
         onUpdate: @escaping @Sendable (LiveTranscriptSnapshot) -> Void
     ) async throws {
-        #if canImport(MLX) && canImport(MLXAudioSTT)
         let requestID = UUID()
         liveSessionRequestID = requestID
+        liveSessionActive = false
+        liveOnUpdate = nil
         await unloadTask?.value
         guard liveSessionRequestID == requestID else { throw CancellationError() }
-        if let session = liveSession {
-            await session.finish()
-            guard liveSessionRequestID == requestID else { throw CancellationError() }
-            if liveSession === session { liveSession = nil }
-        }
-        if liveModelVariant != variant || liveModel == nil {
-            liveModel = nil
-            liveModelVariant = nil
-            MLX.Memory.clearCache()
-            var loaded: Qwen3ASRModel? = try await Qwen3ASRModel.fromPretrained(variant.huggingFaceModelID)
-            guard liveSessionRequestID == requestID else {
-                loaded = nil
-                MLX.Memory.clearCache()
-                throw CancellationError()
-            }
-            liveModel = loaded
-            liveModelVariant = variant
-        }
-        guard liveSessionRequestID == requestID, let liveModel else { throw CancellationError() }
-        liveSession = LiveASRSession(
-            model: liveModel,
-            languageHint: languageMode.asrLanguageHint,
-            onUpdate: onUpdate
-        )
-        #else
-        throw ASRServiceError.modelUnavailable
-        #endif
+        await liveNative.cancel()
+        guard liveSessionRequestID == requestID else { throw CancellationError() }
+        onUpdate(LiveTranscriptSnapshot(finalizedText: "", partialText: "", statusMessage: "Preparing Nemotron 3.5..."))
+        try await loadLiveModelIfNeeded()
+        guard liveSessionRequestID == requestID else { throw CancellationError() }
+        try await liveNative.start(language: LiveASRModel.language(for: languageMode))
+        guard liveSessionRequestID == requestID else { throw CancellationError() }
+        liveSessionActive = true
+        liveOnUpdate = onUpdate
+        let initial = LiveTranscriptSnapshot(finalizedText: "", partialText: "", statusMessage: "Listening...")
+        lastLiveSnapshot = initial
+        onUpdate(initial)
     }
 
-    func ingestLiveSamples(_ samples: [Float]) {
-        #if canImport(MLX) && canImport(MLXAudioSTT)
-        liveSession?.ingest(samples: samples)
-        #endif
+    private func loadLiveModelIfNeeded() async throws {
+        if liveModelLoaded { return }
+        if let pending = liveLoadTask {
+            try await pending.task.value
+            guard liveLoadGeneration == pending.id else { throw CancellationError() }
+            liveModelLoaded = true
+            return
+        }
+        let generation = UUID()
+        liveLoadGeneration = generation
+        let task = Task { [liveNative] in
+            let url = try await GGUFCache.shared.download(model: GGUFModel(
+                repository: LiveASRModel.huggingFaceModelID, filename: LiveASRModel.filename
+            ))
+            try Task.checkCancellation()
+            try await liveNative.load(modelURL: url)
+            try Task.checkCancellation()
+        }
+        liveLoadTask = (generation, task)
+        do {
+            try await task.value
+            guard liveLoadGeneration == generation else { throw CancellationError() }
+            liveLoadTask = nil
+            liveModelLoaded = true
+        } catch {
+            if liveLoadTask?.id == generation { liveLoadTask = nil }
+            throw error
+        }
+    }
+
+    func ingestLiveSamples(_ samples: [Float]) async {
+        guard liveSessionActive, !samples.isEmpty else { return }
+        let requestID = liveSessionRequestID
+        do {
+            let snapshot = try await liveNative.feed(samples: samples)
+            guard liveSessionRequestID == requestID, liveSessionActive else { return }
+            publishLiveSnapshot(snapshot)
+        } catch {
+            guard liveSessionRequestID == requestID else { return }
+            liveSessionActive = false
+            liveOnUpdate?(LiveTranscriptSnapshot(
+                finalizedText: lastLiveSnapshot?.finalizedText ?? "",
+                partialText: lastLiveSnapshot?.partialText ?? "",
+                statusMessage: "Live transcription unavailable: \(error.localizedDescription)"
+            ))
+            liveOnUpdate = nil
+        }
     }
 
     func finishLiveTranscription() async {
-        #if canImport(MLX) && canImport(MLXAudioSTT)
-        liveSessionRequestID = UUID()
-        if let session = liveSession {
-            await session.finish()
-            if liveSession === session { liveSession = nil }
+        let requestID = UUID()
+        liveSessionRequestID = requestID
+        guard liveSessionActive else {
+            await cancelLiveTranscription()
+            return
         }
-        #endif
+        liveSessionActive = false
+        do {
+            let snapshot = try await liveNative.finish()
+            guard liveSessionRequestID == requestID else { return }
+            publishLiveSnapshot(snapshot)
+        } catch {
+            // Final output always comes from the separate complete-recording ASR pass.
+            guard liveSessionRequestID == requestID else { return }
+            await liveNative.cancel()
+        }
+        guard liveSessionRequestID == requestID else { return }
+        liveOnUpdate = nil
+        lastLiveSnapshot = nil
     }
 
     func cancelLiveTranscription() async {
-        await finishLiveTranscription()
+        liveSessionRequestID = UUID()
+        liveSessionActive = false
+        liveOnUpdate = nil
+        lastLiveSnapshot = nil
+        liveLoadGeneration = UUID()
+        let pending = liveLoadTask?.task
+        liveLoadTask = nil
+        pending?.cancel()
+        await liveNative.cancel()
+        _ = await pending?.result
+    }
+
+    private func publishLiveSnapshot(_ nativeSnapshot: GGUFStreamSnapshot) {
+        let snapshot = LiveTranscriptSnapshot(
+            finalizedText: nativeSnapshot.committedText,
+            partialText: nativeSnapshot.pendingText,
+            statusMessage: nil
+        )
+        guard snapshot != lastLiveSnapshot else { return }
+        lastLiveSnapshot = snapshot
+        liveOnUpdate?(snapshot)
     }
 
     func cancelInference() async {
