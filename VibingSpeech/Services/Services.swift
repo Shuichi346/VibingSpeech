@@ -824,7 +824,7 @@ enum TextProcessingServiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .modelUnavailable:
-            "LFM3 text processing could not be loaded."
+            "Qwen3.5 text processing could not be loaded."
         case .emptyPrompt:
             "A custom text processing prompt is required."
         case .emptyResult:
@@ -1176,15 +1176,16 @@ final class LaunchAtLoginService: ObservableObject {
 
 @MainActor
 final class TextProcessingService: ObservableObject {
-    nonisolated static let modelIdentifier = "LiquidAI/LFM3-1.7B-GGUF"
-    nonisolated static let modelFilename = "LFM3-1.7B-Q6_K.gguf"
+    nonisolated static let modelIdentifier = "unsloth/Qwen3.5-2B-GGUF"
+    nonisolated static let modelFilename = "Qwen3.5-2B-Q8_0.gguf"
     nonisolated static let maxOutputTokens = 16_384
-    nonisolated static let generationTemperature: Float = 0.1
+    // Qwen3.5's recommended non-thinking sampling for text tasks.
+    nonisolated static let generationTemperature: Float = 1
     nonisolated static let generationTopP: Float = 1
-    nonisolated static let generationTopK = 50
+    nonisolated static let generationTopK = 20
     nonisolated static let generationMinP: Float = 0
-    nonisolated static let generationPresencePenalty: Float = 0
-    nonisolated static let generationRepetitionPenalty: Float = 1.1
+    nonisolated static let generationPresencePenalty: Float = 2
+    nonisolated static let generationRepetitionPenalty: Float = 1
 
     @Published private(set) var isReady = false
     @Published private(set) var isLoading = false

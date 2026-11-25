@@ -13,6 +13,7 @@
 
 ### Changed
 
+- Replaced only the Text Processing model with Qwen3.5 2B Q8_0 from Unsloth, retaining non-thinking-only generation and applying its recommended text sampling parameters.
 - Replaced live Qwen3-ASR MLX inference with Nemotron 3.5 ASR Streaming 0.6B Q8_0 through the bundled transcribe.cpp runtime, with Japanese/Auto language support and a fixed Live Model display.
 - Preserved native committed/tentative text boundaries in the live overlay and finalized buffered audio before the separate complete-recording ASR pass.
 - Configured public package resolution in build scripts to avoid macOS Keychain authentication prompts.

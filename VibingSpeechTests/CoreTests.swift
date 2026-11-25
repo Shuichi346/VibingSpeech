@@ -97,15 +97,18 @@ final class CoreTests: XCTestCase {
         XCTAssertFalse(state.liveTranscriptVisible)
     }
 
-    func testTextProcessingSendsNonThinkingLFMRequest() throws {
-        XCTAssertEqual(TextProcessingService.modelIdentifier, "LiquidAI/LFM3-1.7B-GGUF")
-        XCTAssertEqual(TextProcessingService.modelFilename, "LFM3-1.7B-Q6_K.gguf")
+    func testTextProcessingSendsNonThinkingQwenTextRequest() throws {
+        XCTAssertEqual(TextProcessingService.modelIdentifier, "unsloth/Qwen3.5-2B-GGUF")
+        XCTAssertEqual(TextProcessingService.modelFilename, "Qwen3.5-2B-Q8_0.gguf")
         let body = TextProcessingBackend.requestBody(text: "helo", systemPrompt: "Fix typos.")
         let data = try JSONSerialization.data(withJSONObject: body)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertEqual((json["temperature"] as? NSNumber)?.floatValue, 0.1)
-        XCTAssertEqual(json["top_k"] as? Int, 50)
-        XCTAssertEqual((json["repeat_penalty"] as? NSNumber)?.floatValue, 1.1)
+        XCTAssertEqual((json["temperature"] as? NSNumber)?.floatValue, 1)
+        XCTAssertEqual((json["top_p"] as? NSNumber)?.floatValue, 1)
+        XCTAssertEqual(json["top_k"] as? Int, 20)
+        XCTAssertEqual((json["min_p"] as? NSNumber)?.floatValue, 0)
+        XCTAssertEqual((json["presence_penalty"] as? NSNumber)?.floatValue, 2)
+        XCTAssertEqual((json["repeat_penalty"] as? NSNumber)?.floatValue, 1)
         XCTAssertEqual((json["chat_template_kwargs"] as? [String: Bool])?["enable_thinking"], false)
         let messages = try XCTUnwrap(json["messages"] as? [[String: String]])
         XCTAssertEqual(messages, [["role": "system", "content": "Fix typos."], ["role": "user", "content": "helo"]])
