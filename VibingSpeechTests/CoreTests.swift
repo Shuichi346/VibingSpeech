@@ -5,29 +5,38 @@ import XCTest
 
 final class CoreTests: XCTestCase {
     func testASRModelVariantMetadata() {
-        XCTAssertEqual(ASRModelVariant.qwen3_0_6b_8bit.displayName, "Qwen3-ASR 0.6B (8-bit)")
-        XCTAssertEqual(
-            ASRModelVariant.qwen3_0_6b_8bit.huggingFaceModelID,
-            "mlx-community/Qwen3-ASR-0.6B-8bit"
-        )
-        XCTAssertEqual(
-            ASRModelVariant.qwen3_1_7b_4bit.huggingFaceModelID,
-            "mlx-community/Qwen3-ASR-1.7B-4bit"
-        )
-        XCTAssertEqual(
-            ASRModelVariant.qwen3_1_7b_8bit.huggingFaceModelID,
-            "mlx-community/Qwen3-ASR-1.7B-8bit"
-        )
-        XCTAssertEqual(ASRModelVariant.qwen3_1_7b_4bit.estimatedDownloadSize, "~1.6 GB")
-        XCTAssertEqual(ASRModelVariant.qwen3_1_7b_8bit.estimatedDownloadSize, "~2.5 GB")
-        XCTAssertEqual(ASRModelVariant.qwen3_1_7b_8bit.estimatedMemory, "~3.5 GB")
+        XCTAssertEqual(ASRModelVariant.allCases.count, 2)
+        XCTAssertEqual(ASRModelVariant.graniteSpeech5.huggingFaceModelID,
+                       "vladers/granite-speech-5.0-470m-turboctc-GGUF")
+        XCTAssertEqual(ASRModelVariant.graniteSpeech5.filename,
+                       "granite-speech-5.0-470m-turboctc-Q8_0.gguf")
+        XCTAssertEqual(ASRModelVariant.qwen3_1_7b_8bit.huggingFaceModelID,
+                       "handy-computer/Qwen3-ASR-1.7B-gguf")
+        XCTAssertEqual(ASRModelVariant.qwen3_1_7b_8bit.filename, "Qwen3-ASR-1.7B-Q8_0.gguf")
+        XCTAssertEqual(LiveASRModel.huggingFaceModelID,
+                       "handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf")
+        XCTAssertEqual(LiveASRModel.filename, "nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf")
+    }
+
+    @MainActor
+    func testSettingsPreserveFinalModelAndLiveTranscription() {
+        let name = "VibingSpeech-model-migration-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        defaults.set("qwen3_1_7b_8bit", forKey: "asrModelVariant")
+        defaults.set(true, forKey: "liveTranscriptionEnabled")
+        let settings = SettingsStore(defaults: defaults)
+        XCTAssertEqual(settings.asrModelVariant, .qwen3_1_7b_8bit)
+        XCTAssertTrue(settings.liveTranscriptionEnabled)
+        settings.save()
+        XCTAssertEqual(defaults.string(forKey: "asrModelVariant"), "qwen3_1_7b_8bit")
     }
 
     func testPromptGenerationUsesSelectedLanguage() {
         let prompt = TextProcessingPreset.fixTypos.systemPrompt(detectedLanguage: "ja", selectedLanguage: .english)
         XCTAssertTrue(prompt.contains("Write the output in English."))
         XCTAssertFalse(prompt.contains("Write the output in Japanese."))
-        XCTAssertTrue(prompt.contains("Fix misrecognized words"))
+        XCTAssertTrue(prompt.contains("Correct only obvious transcription errors"))
     }
 
     func testPromptGenerationUsesDetectedLanguageOnlyForAuto() {
@@ -48,6 +57,16 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(LanguageMode.normalized("unknown"), .auto)
     }
 
+    func testBulletPointFormattingMarksPlainNotesWithoutAddingHeading() {
+        let output = BulletPointFormatter.normalized("Maybe next week.  \n\nOnly if the images are ready.\nKeep the price unchanged.")
+        XCTAssertEqual(output, "- Maybe next week.\n- Only if the images are ready.\n- Keep the price unchanged.")
+    }
+
+    func testBulletPointFormattingKeepsHeadingAndNormalizesMarkers() {
+        let output = BulletPointFormatter.normalized("買い物  \n\n* 牛乳2本\n\n・卵6個\n- パンは買わない  ")
+        XCTAssertEqual(output, "買い物\n\n- 牛乳2本\n- 卵6個\n- パンは買わない")
+    }
+
     func testASRLanguageHints() {
         XCTAssertNil(LanguageMode.auto.asrLanguageHint)
         XCTAssertEqual(LanguageMode.english.asrLanguageHint, "en")
@@ -60,53 +79,50 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(WordCounter.count("今日は晴れです"), 7)
         XCTAssertEqual(WordCounter.count("明日は雨?"), 4)
         XCTAssertEqual(WordCounter.count("hello 世界"), 3)
-        XCTAssertEqual(WordCounter.count("Swift と MLX"), 3)
+        XCTAssertEqual(WordCounter.count("Swift と GGUF"), 3)
         XCTAssertEqual(WordCounter.count("今日は晴れです Hello world"), 9)
     }
 
-    func testLiveTranscriptBufferReplacesPartialAndCommitsFinalSegments() {
-        var buffer = LiveTranscriptBuffer()
-        buffer.updatePartial(" Hello ")
-        XCTAssertEqual(buffer.snapshot.partialText, "Hello")
-        XCTAssertEqual(buffer.combinedText, "Hello")
-
-        buffer.updatePartial("Hello, the weather is nice")
-        XCTAssertEqual(buffer.snapshot.partialText, "Hello, the weather is nice")
-
-        buffer.commitFinal("Hello, the weather is nice today as well.")
-        XCTAssertEqual(buffer.snapshot.finalizedText, "Hello, the weather is nice today as well.")
-        XCTAssertEqual(buffer.snapshot.partialText, "")
-
-        buffer.updatePartial("I would like to talk")
-        XCTAssertEqual(
-            buffer.combinedText,
-            "Hello, the weather is nice today as well. I would like to talk"
-        )
+    func testLiveLanguageUsesNemotronLocalesIncludingExplicitAuto() {
+        XCTAssertEqual(LiveASRModel.language(for: .auto), "auto")
+        XCTAssertEqual(LiveASRModel.language(for: .english), "en-US")
+        XCTAssertEqual(LiveASRModel.language(for: .japanese), "ja-JP")
+        XCTAssertEqual(LiveASRModel.language(for: .chinese), "zh-CN")
     }
 
-    func testLiveTranscriptBufferFlushesPartialAndResetsOnCancel() {
-        var buffer = LiveTranscriptBuffer()
-        buffer.commitFinal("First sentence.")
-        buffer.updatePartial("Second sentence")
-        buffer.commitPartialIfNeeded()
-
-        XCTAssertEqual(buffer.finalizedText, "First sentence. Second sentence")
-        XCTAssertEqual(buffer.partialText, "")
-
-        buffer.reset()
-        XCTAssertEqual(buffer.snapshot, .empty)
+    @MainActor
+    func testNativeLiveSnapshotsReplaceTentativeTextAndResetWithoutAddingSpaces() {
+        let state = RecordingOverlayState()
+        state.resetLiveTranscript(visible: true)
+        state.applyLiveTranscript(LiveTranscriptSnapshot(
+            finalizedText: "ガレージ", partialText: "バント", statusMessage: nil
+        ))
+        state.applyLiveTranscript(LiveTranscriptSnapshot(
+            finalizedText: "ガレージ", partialText: "バンド", statusMessage: nil
+        ))
+        XCTAssertEqual(state.liveFinalizedText + state.livePartialText, "ガレージバンド")
+        state.resetLiveTranscript(visible: false)
+        XCTAssertEqual(state.liveFinalizedText, "")
+        XCTAssertEqual(state.livePartialText, "")
+        XCTAssertFalse(state.liveTranscriptVisible)
     }
 
-    func testTextProcessingUsesQwen35NonThinkingConfiguration() {
-        XCTAssertEqual(TextProcessingService.modelIdentifier, "mlx-community/Qwen3.5-4B-MLX-4bit")
-        XCTAssertEqual(TextProcessingService.maxOutputTokens, 16_384)
-        XCTAssertEqual(TextProcessingService.generationTemperature, 0.7)
-        XCTAssertEqual(TextProcessingService.generationTopP, 0.8)
-        XCTAssertEqual(TextProcessingService.generationTopK, 20)
-        XCTAssertEqual(TextProcessingService.generationMinP, 0)
-        XCTAssertEqual(TextProcessingService.generationPresencePenalty, 1.5)
-        XCTAssertEqual(TextProcessingService.generationRepetitionPenalty, 1)
-        XCTAssertEqual(TextProcessingService.chatTemplateContext["enable_thinking"] as? Bool, false)
+    func testTextProcessingSendsNonThinkingQwenTextRequest() throws {
+        XCTAssertEqual(TextProcessingService.modelIdentifier, "unsloth/Qwen3-4B-Instruct-2507-GGUF")
+        XCTAssertEqual(TextProcessingService.modelFilename, "Qwen3-4B-Instruct-2507-Q4_K_M.gguf")
+        let body = TextProcessingBackend.requestBody(text: "helo", systemPrompt: "Fix typos.")
+        let data = try JSONSerialization.data(withJSONObject: body)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["max_tokens"] as? Int, 16_384)
+        XCTAssertEqual((json["temperature"] as? NSNumber)?.floatValue, 0.7)
+        XCTAssertEqual((json["top_p"] as? NSNumber)?.floatValue, 0.8)
+        XCTAssertEqual(json["top_k"] as? Int, 20)
+        XCTAssertEqual((json["min_p"] as? NSNumber)?.floatValue, 0)
+        XCTAssertEqual((json["presence_penalty"] as? NSNumber)?.floatValue, 0)
+        XCTAssertEqual((json["repeat_penalty"] as? NSNumber)?.floatValue, 1)
+        XCTAssertNil(json["chat_template_kwargs"], "Instruct 2507 has no thinking mode to disable")
+        let messages = try XCTUnwrap(json["messages"] as? [[String: String]])
+        XCTAssertEqual(messages, [["role": "system", "content": "Fix typos."], ["role": "user", "content": "helo"]])
     }
 
     func testShortAudioIsRejectedBeforeASRModelUse() async {

@@ -26,6 +26,11 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>VibingSpeech records your voice locally so it can transcribe and paste dictated text into the active app.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

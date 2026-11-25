@@ -9,173 +9,227 @@
 
 # VibingSpeech
 
-VibingSpeech は、Apple Silicon Mac 向けのネイティブ macOS 音声入力ユーティリティです。メニューバー常駐アプリとして動作し、グローバルホットキーで録音を開始し、Qwen3-ASR を使用してローカルで音声をテキストに変換します。録音中にオプションのライブ文字起こし表示が可能で、必要に応じてローカルの Qwen3 LLM で最終テキストを整形し、システムのペーストボードを通じて最前面のアプリに結果を貼り付けます。
+Apple Silicon Mac 向けのローカル音声入力アプリです。ホットキーで録音し、Granite Speech または Qwen3-ASR で文字起こしします。必要に応じて Qwen3 Instruct 2507 で文章を整え、使用中のアプリへ貼り付けます。
+
+メニューバーに常駐し、音声とテキストの推論は Mac 内で実行します。必要なモデルは初回使用時にダウンロードします。
 
 ## 目次
 
-- [プレビュー](#preview)
 - [機能](#features)
-- [技術スタック](#tech-stack)
 - [動作要件](#requirements)
 - [ビルドと実行](#build-and-run)
 - [使い方](#usage)
+- [モデル](#models)
+- [プライバシーとモデル管理](#privacy-and-model-lifecycle)
+- [画面例](#screenshots)
 - [テスト](#testing)
-- [アーカイブ](#archive)
-- [プロジェクト構成](#project-structure)
-- [権限とプライバシー](#permissions-and-privacy)
+- [リリース用アーカイブと署名](#release-archive-and-signing)
 - [トラブルシューティング](#troubleshooting)
+- [プロジェクト構成](#project-structure)
 - [ライセンス](#license)
 
-## プレビュー
-
-<img src="githubreadme/ui-main.png" alt="VibingSpeech ホーム画面" width="480">
-
-<img src="githubreadme/ui-hotwords.png" alt="VibingSpeech ホットワード画面" width="480">
-
-<img src="githubreadme/ui-history.png" alt="VibingSpeech 履歴画面" width="480">
-
-<img src="githubreadme/ui-other.png" alt="VibingSpeech その他の設定画面" width="480">
+<a id="features"></a>
 
 ## 機能
 
-- 短押しトグルモードと長押しホールドモードに対応したグローバル録音ホットキー。
-- ライブ音量フィードバックと文字起こし状態を表示するフローティング録音オーバーレイ。
-- 録音中に別のオーバーレイでネイティブストリーミング ASR テキストを表示し、停止後に録音全体をバッチ文字起こしして一度だけ貼り付けるオプションのライブ文字起こしモード。
-- Qwen3-ASR 0.6B、1.7B 4-bit、1.7B 8-bit MLX バリアントに対応したローカル ASR モデル選択。
-- `mlx-community/Qwen3.5-4B-MLX-4bit` を非思考モードで使用した、誤字修正・箇条書きフォーマット・カスタムプロンプトに対応するオプションのローカルテキスト処理（LLM）。
-- システムのデフォルトに依存せず、録音エンジンに選択した入力デバイスを適用する Core Audio マイク選択。
-- 名前・用語・固有名詞のローカルホットワードマネージャー。
-- 保持設定・検索・コピー・削除・クリア・元の ASR コピー操作に対応したローカル文字起こし履歴。
-- アプリ全体の外観モード、ログイン時に起動、アイドル時のモデル自動アンロード設定。
-- クリップボードの復元機能付きで、アクティブなアプリへ安全にテキストを挿入。
-- Dock アイコンなしのメニューバーライフサイクル。
-- 起動時の Apple Silicon 確認ガード。
+- 録音ホットキーの短押しで開始・停止、長押しで押している間だけ録音。Escape でキャンセル。
+- macOS の既定とは別に入力マイクを選択。Bluetooth ヘッドホンで再生している場合も、選択したマイクを使用。
+- コンパクトな録音パネルの上にライブ文字起こしを表示。確定テキストの貼り付けは停止後の一度だけ。
+- ローカルの Text Processing で誤字修正、箇条書き化、カスタム指示による整形。
+- Hotwords から確定用 Qwen3-ASR へ語彙ヒントを指定。
+- 履歴の検索、整形後テキストと元の文字起こしのコピー、保存期間の指定。
+- 外観、ログイン時の起動、操作音、アイドル時のモデル解放を設定。
 
-## 技術スタック
-
-- macOS アプリ・メニューバーアイテム・録音オーバーレイに SwiftUI と AppKit を使用。
-- マイクキャプチャ・デバイス選択・音声変換に AVFoundation と Core Audio を使用。
-- グローバルホットキーと疑似ペーストに Carbon と Core Graphics イベントタップを使用。
-- Qwen3-ASR のバッチ推論と確認専用ライブ文字起こしストリームに `mlx-audio-swift` `0.1.3` と `mlx-swift` `0.31.6` を使用。
-- ローカル Qwen3 テキスト処理に `mlx-swift-lm` `3.31.4`（共有の `mlx-swift` `0.31.6` ランタイム、`swift-huggingface` `0.9.0`、`swift-transformers` `1.3.3` を含む）を使用。
-- ログイン時に起動に ServiceManagement を使用。
-- ローカル履歴とホットワードの永続化に Application Support 内の JSON ファイルを使用。
+<a id="requirements"></a>
 
 ## 動作要件
 
-- Apple Silicon Mac。
-- macOS 26.0 以降。
-- Xcode 26.5 以降。
-- Metal ツールチェーン。Xcode の設定 → コンポーネントタブ → その他のコンポーネント → Metal Toolchain。
-- マイクの使用許可。
-- グローバルホットキーとアプリ間ペーストのためのアクセシビリティ権限。
+- **macOS 26.0 以降**を搭載した **Apple Silicon Mac**。Intel Mac は非対応です。
+- Swift 6.2 以降を含む Xcode。開発時には Xcode 27.2／Swift 6.4.2 で確認しています。
+- 録音用のマイク権限と、グローバルホットキー・アプリ間の貼り付け用のアクセシビリティ権限。
+- 依存パッケージとモデルの初回ダウンロード用のネット接続、および選択したモデルを保存する空き容量。
+- Text Processing を使う場合は `llama`。未導入ならアプリが `curl -LsSf https://llama.app/install.sh | sh` を実行します。導入済みなら既存のものを使用します。
+
+<a id="build-and-run"></a>
 
 ## ビルドと実行
 
-リポジトリのルートからプロジェクトスクリプトを使用します：
+リポジトリをクローンまたはダウンロードし、ルートで実行します。
 
 ```sh
 ./script/build_and_run.sh --verify
 ```
 
-このスクリプトは `VibingSpeech.xcodeproj` をビルドし、Debug アプリバンドルを起動して、`VibingSpeech` プロセスが実行中であることを確認します。
+このスクリプトは起動中の VibingSpeech を停止し、`VibingSpeech.xcodeproj` から Debug アプリをアドホック署名付きでビルドします。アプリとネイティブフレームワークの署名を検証してから起動し、5秒間の稼働を確認します。出力先は `DerivedData/` です。アプリ本体は Xcode プロジェクトでビルドし、ローカル Swift パッケージはネイティブ ASR のラッパーを提供します。
 
-その他のサポートされているモード：
+Debug と Release の両方で Hardened Runtime を有効にしています。アドホック署名には Team ID がないため、内蔵の `CTranscribe.framework` を読み込めるよう Disable Library Validation entitlement を付与しています。
 
-```sh
-./script/build_and_run.sh
-./script/build_and_run.sh --logs
-./script/build_and_run.sh --telemetry
-./script/build_and_run.sh --debug
-```
+ビルドスクリプトはパッケージ認証に netrc を指定し、公開の依存関係を取得するときのキーチェーン確認を避けます。
 
-Xcode プロジェクトが主要なビルドパスです。このアプリでは SwiftPM のみのリリースビルドは意図的に使用していません。
+通常起動には `./script/build_and_run.sh` を使用します。診断用に `--logs`、`--telemetry`、`--debug` も指定できます。
+
+<a id="usage"></a>
 
 ## 使い方
 
-1. VibingSpeech を起動します。
-2. macOS からマイクへのアクセス許可を求められたら許可します。
-3. システム設定 > プライバシーとセキュリティ > アクセシビリティ で VibingSpeech を有効にします。
-4. ホーム画面から録音ホットキー・マイク・テキスト処理モード・言語モード・ASR モデルを選択します。
-5. 任意のアプリで録音ホットキーを押します。離すか再度押すと録音が停止し、VibingSpeech が文字起こしを行い最終テキストを貼り付けます。
+1. VibingSpeech を起動し、マイクへのアクセスを許可します。
+2. **システム設定 → プライバシーとセキュリティ → アクセシビリティ**で VibingSpeech を有効にします。
+3. **Home** でマイクと **Final ASR Model** を選び、モデルの準備が完了するまで待ちます。
+4. メモなどの入力欄へカーソルを置きます。**右 Option** を短押しして話し、もう一度短押しすると停止して結果を貼り付けます。
 
-デフォルトのホットキーは右 Option キーです。Escape キーでアクティブな録音をキャンセルできます。
+既定のホットキーは右 Option です。左 Control も選べます。長押しの場合はキーを離すと録音が停止します。**Escape** で録音や処理をキャンセルできます。
 
-ライブ文字起こしが有効な場合、録音中にコンパクトな録音オーバーレイの上部に暫定・確定済みの ASR テキストが表示されます。このストリームは確認専用です。録音停止後、VibingSpeech は 16 kHz の録音全体を別のバッチ処理で文字起こしし、オプションのテキスト処理を実行してから結果を一度だけ挿入します。20 分以内の録音では Qwen3-ASR の単一コンテキストが維持され、それを超える録音は `mlx-audio-swift` によって低エネルギー境界で内部的に分割されます。
+録音中のテキストを確認するには **Live Transcription** を有効にします。**Nemotron 3.5 ASR Streaming 0.6B** を使用し、Live Model 行には固定の Q8_0 モデルを表示します。初回は約750 MB のダウンロードと読み込みの間、Home に準備状況を表示し、準備完了後に録音を開始します。ライブ表示は貼り付けられません。停止後にモノラル 16 kHz の録音全体をネイティブ ASR へ一度に渡し、必要に応じて LLM で処理してから挿入します。モデルの入力上限を超えた場合は、音声を黙って切り捨てずエラーを表示します。
 
-ホットワードを使用して名前やドメイン用語のローカルリストを管理し、履歴で保存された音声入力を検索・コピーし、その他の設定で外観・ログイン時に起動・モデルの自動アンロードタイミングを設定します。
+**Language** は Auto・English・Japanese・Chinese から選びます。Qwen3-ASR とライブ表示には言語ヒントとして適用されます。Granite CTC は言語ヒントに非対応です。**Text Processing (LLM)** が有効な場合は出力言語にも適用されます。Auto は検出言語があればそれに従い、なければ入力テキストの言語を使用します。
+
+文章を整えるには **Text Processing (LLM)** を有効にし、**Fix Typos**、**Bullet Points**、**Custom** を選びます。処理は録音停止後の確定テキストに対して一度だけ実行します。
+
+**Hotwords** の語彙ヒントは確定用 Qwen3-ASR に適用されます。Granite CTC はプロンプトによるヒントに非対応です。**History** では履歴の検索、LLM 整形後テキストと元の文字起こしのコピーができます。**Save History** で Forever（無期限）・One Week（1週間）・One Day（1日）・Never（保存しない）を選びます。**Other** では外観・ログイン時の起動・モデル自動解放を設定します。メインウィンドウを閉じてもメニューバーに常駐し、メニューバーの **Show Window** で再表示できます。
+
+組み込みプロンプトは短く、例文を含みません。**Fix Typos** は意味を保った最小限の修正を指示します。**Bullet Points** は話した考えを順番に整理し、列挙されたものは別々の項目にします。リストの見出しは元の発話にある場合だけ残します。
+
+<a id="models"></a>
+
+## モデル
+
+確定文字起こしとライブ表示には別々のモデルを使います。確定 ASR の既定は Granite Speech です。Hotwords を使う場合は Qwen3-ASR を選びます。
+
+| 用途 | モデル | 形式 | 実行エンジン | ダウンロードの目安 |
+| --- | --- | --- | --- | --- |
+| 確定 ASR・既定 | [Granite Speech 5.0 470M TurboCTC](https://huggingface.co/vladers/granite-speech-5.0-470m-turboctc-GGUF) | GGUF Q8_0 | transcribe.cpp | 520 MB |
+| 確定 ASR | [Qwen3-ASR 1.7B](https://huggingface.co/handy-computer/Qwen3-ASR-1.7B-gguf) | GGUF Q8_0 | transcribe.cpp | 2.2 GB |
+| ライブ表示 | [Nemotron 3.5 ASR Streaming 0.6B](https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf) | GGUF Q8_0 | transcribe.cpp | 750 MB |
+| 任意の Text Processing | [Qwen3 4B Instruct 2507](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | GGUF Q4_K_M | llama.cpp・非推論モード | 2.5 GB |
+
+使用する GGUF ファイルは以下のとおりです。
+
+- `granite-speech-5.0-470m-turboctc-Q8_0.gguf`
+- `Qwen3-ASR-1.7B-Q8_0.gguf`
+- `nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf`
+- `Qwen3-4B-Instruct-2507-Q4_K_M.gguf`
+
+Text Processing は非推論専用の Instruct 2507 モデルを使用します。設定は `temperature=0.7`、`top_p=0.8`、`top_k=20`、`min_p=0.0`、`presence_penalty=0.0`、`repeat_penalty=1.0`（llama.cpp での repetition penalty の名前）で、出力上限は 16,384 トークンです。推論モードを切り替える指定は不要です。[モデル推奨設定](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507#best-practices)に基づいています。
+
+Qwen3-ASR は **handy-computer 版**を使用します。ggml-org 版は llama.cpp 向けの異なる構造のため、この transcribe.cpp 用モデルとは交換できません。
+
+ライブ表示には transcribe.cpp 用に変換された Nemotron 3.5 を使用します。日本語と多言語のストリーミング、言語指定と Auto、240 ms の先読み処理に対応します。ライブ文字起こしを使うと、選択した確定 ASR モデルに加えて読み込みます。ストリーミングは確認専用で、停止後の確定 ASR は録音全体を別途処理します。
+
+ライブ・確定 ASR ともに、チェックサムで固定した XCFramework を通じて transcribe.cpp `v0.4.2` を使用します。Nemotron は上記リンクの変換モデルを使用します。NVIDIA 公式 GGUF はアーキテクチャが異なるため交換できません。
+
+<a id="privacy-and-model-lifecycle"></a>
+
+## プライバシーとモデル管理
+
+音声と推論処理はローカルにとどまります。設定・Hotwords・履歴も Mac 内に保存します。モデルのダウンロードと、必要な場合の llama インストールにはネット接続を使います。
+
+GGUF は共通の `~/.cache/huggingface/hub` に snapshots/blobs 形式で保存し、SHA-256 で検証します。公開モデルのため、アプリへのトークン入力は不要です。既存の `HF_TOKEN` または Hugging Face のトークンファイルを利用でき、`HF_TOKEN_PATH` と `HF_HOME` によるトークンファイルの指定にも対応します。
+
+Text Processing は専用の API キーを持つ llama サーバーを `127.0.0.1` に起動します。標準ポートを避け、**49271、49283、49307、49319、49331、49349** の順に試します。他のアプリのサーバーへ接続したり、停止したりしません。
+
+**Model Auto-Unload** の既定はアイドル 5 分です。待機中は ASR を保持し、Text Processing が有効な場合は LLM も保持します。指定時間が経つと ASR モデルを解放し、アプリ専用の llama サーバーを停止します。次の録音で必要になったモデルは再読み込みします。Off にするとアイドル時の自動解放を無効にします。Text Processing を無効にしたとき、処理をキャンセルしたとき、アプリ終了時にもサーバーを停止します。ダウンロード済みのキャッシュは再利用のために残します。
+
+<a id="screenshots"></a>
+
+## 画面例
+
+**Home** — 録音操作、マイク選択、ライブ表示、Text Processing を設定します。下にある設定は画面内をスクロールして表示します。
+
+<img src="githubreadme/ui-home-2026-11-25.png" alt="右 Option ホットキー、既定マイク、ライブ表示、Text Processing、Qwen3-ASR の選択を表示する Home" width="480">
+
+<details>
+<summary>Hotwords・History・Other の画面</summary>
+
+**Hotwords** — 確定用 Qwen3-ASR に渡す語彙ヒントを追加します。
+
+<img src="githubreadme/ui-hotwords-2026-11-25.png" alt="語彙ヒントの入力欄と Granite CTC は非対応という説明を表示する Hotwords" width="480">
+
+**History** — 保存期間の指定、履歴検索、整形後テキストと原文のコピーができます。
+
+<img src="githubreadme/ui-history-2026-11-25.png" alt="無期限保存、検索欄、LLM 整形結果、展開した元の ASR テキストを表示する History" width="480">
+
+**Other** — 外観、モデル自動解放、ログイン時の起動を設定します。
+
+<img src="githubreadme/ui-other-2026-11-25.png" alt="システムに従う外観、5分のモデル自動解放、有効なログイン時起動を表示する Other" width="480">
+
+</details>
+
+<a id="testing"></a>
 
 ## テスト
 
-以下のコマンドでアプリのユニットテストを実行します：
+モデルの読み込みやマイク権限の要求を行わず、単体テストを実行します。
 
 ```sh
 xcodebuild -project VibingSpeech.xcodeproj \
-  -skipPackagePluginValidation \
+  -packageAuthorizationProvider netrc \
   -scheme VibingSpeech \
   -configuration Debug \
   -destination 'platform=macOS,arch=arm64' \
-  -derivedDataPath DerivedData \
+  -derivedDataPath /tmp/VibingSpeech-Tests \
   CODE_SIGNING_ALLOWED=NO \
   -only-testing:VibingSpeechTests \
   test
 ```
 
-現在のテストは、モデルメタデータ・プロンプト生成・言語正規化・単語数カウント・ライブ文字起こしバッファリング・短い音声の ASR ガード・設定の永続化・モデルアンロード遅延の境界値・履歴の保持・破損した履歴の復元・ホットワードの検証・ペーストボードの復元をカバーしています。
+ネイティブのストリーミングパッケージには独立したテストもあります。
 
-## アーカイブ
+```sh
+swift test --package-path Packages/TranscribeRuntime --disable-keychain
+```
 
-Apple Silicon のビルド設定と署名チェックを一貫して適用するため、アーカイブスクリプトを使用してください：
+パッケージのテストには、モデル不要のライフサイクル確認と実モデルを使うストリーミング統合テストがあります。実モデルのテストは任意実行です。`VIBINGSPEECH_TEST_NEMOTRON_GGUF` に対応する Q8_0 ファイルを、`VIBINGSPEECH_TEST_NEMOTRON_PCM` にモノラル 16 kHz・リトルエンディアン float32 の PCM ファイルを指定します。未指定なら、モデル不要のテストだけを実行します。
+
+一時フォルダーを使うのは、Documents 内のリポジトリから XCTest がネイティブ framework を読み込む際に発生した、macOS のファイルアクセス確認を避けるためです。共有スキームのテスト起動引数には `--ui-testing` を指定し、モデルのダウンロードやマイク機器に依存しない構成にしています。
+
+設定の保存、プロンプト生成、ライブ音声の順序、履歴の保存期間と復旧、GGUF キャッシュ検証、ポート切り替え、認証、キャンセル、サーバー停止をテストします。マイク実機テストは対象デバイスを指定しない限りスキップします。UI 自動テストには信頼済みの macOS 開発署名が必要で、アドホック署名ではその開発署名を代替できません。
+
+<a id="release-archive-and-signing"></a>
+
+## リリース用アーカイブと署名
+
+ローカルで使用するリリース用アプリバンドルを作成します。
 
 ```sh
 ./script/archive.sh
 ```
 
-スクリプトは以下を生成します：
+既存の出力先 `build/VibingSpeech.xcarchive` と `build/VibingSpeech.app` は置き換えます。arm64 向けにビルドし、内部コードからアプリ本体の順に**アドホック署名**（`--sign -`）を行います。Hardened Runtime と Audio Input・Disable Library Validation の両 entitlement を維持し、署名・runtime フラグ・必須の両 entitlement・アプリ内の Version／Build と Xcode 設定の一致を検証します。
 
-- `build/VibingSpeech.xcarchive`
-- `build/VibingSpeech.app`
+バージョンは `VibingSpeech.xcodeproj` の `MARKETING_VERSION` と `CURRENT_PROJECT_VERSION` で変更し、`Info.plist` の対応する変数参照は維持します。この手順で生成するのはアドホック署名済みのローカル用バンドルであり、Developer ID 署名・公証済みの配布物ではありません。
 
-アーカイブのワークフローでは `ARCHS=arm64` を渡し、アプリバンドルの前にネストされたコードに署名し、`VibingSpeech/Resources/VibingSpeech.entitlements` を保持し、Hardened Runtime を有効にし、ランタイムフラグが存在することを確認して、Apple Silicon 専用アプリを生成します。
-
-## プロジェクト構成
-
-```text
-VibingSpeech/
-├── VibingSpeech.xcodeproj
-├── VibingSpeech/
-│   ├── App/              # アプリのエントリポイントとコーディネーター
-│   ├── Core/             # 共有アプリの列挙型とヘルパー
-│   ├── Models/           # ドメインモデル
-│   ├── Persistence/      # 設定・履歴・ホットワードストア
-│   ├── Resources/        # Info.plist とアセットカタログ
-│   ├── Services/         # ホットキー・音声・ASR・テキスト挿入・権限
-│   ├── Support/          # フォーマットヘルパー
-│   └── Views/            # SwiftUI ビューとオーバーレイパネル
-├── VibingSpeechTests/
-├── VibingSpeechUITests/
-├── docs/
-└── script/
-```
-
-## 権限とプライバシー
-
-VibingSpeech は録音のためにマイクへのアクセスが必要です。グローバルホットキーと最前面のアプリへのテキスト挿入にはアクセシビリティ権限が必要です。
-
-音声はローカルで処理されます。ホットワード・設定・文字起こし履歴はデバイス上に保存されます。ASR またはテキスト処理モデルを初回使用時に Hugging Face からダウンロードする際には、ネットワークアクセスが発生します。
+<a id="troubleshooting"></a>
 
 ## トラブルシューティング
 
-ホットキーが機能しない場合は、システム設定 > プライバシーとセキュリティ > アクセシビリティ で VibingSpeech を有効にしてから、アプリ内の「ホットキー設定を再試行」を使用してください。
+| 症状 | 確認すること |
+| --- | --- |
+| ホットキーや貼り付けが動かない | アクセシビリティ権限を有効にし、Home の **Retry Hotkey Setup** を使用します。 |
+| 選択したマイクが使えない | 再接続するか別の入力を選び、録音し直します。デバイス選択は録音開始時に適用します。 |
+| Text Processing が起動しない | 状態表示を確認し、`llama` が導入済みで Qwen3 Instruct 2507 に対応しているか確認します。古いものは自動更新せず、起動エラーを表示します。 |
+| 推論用ポートがすべて使用中 | 候補ポートのいずれかを空けるか、別の VibingSpeech を終了して再試行します。 |
+| アイドル中にモデルが解放される | **Other → Model Auto-Unload** の時間を変更するか、Off にします。 |
+| ごく短い録音で文字が出ない | ASR の最小長に満たない音声は破棄します。 |
+| XCTest がアプリ起動前に待機する | テスト手順にある一時フォルダーをビルド先に使用します。 |
 
-表示されているマイクを変更しても録音が別のデバイスを使用しているように見える場合は、アクティブな録音を停止して新しい録音を開始してください。VibingSpeech は録音セッション開始時に選択された Core Audio デバイスを適用し、そのデバイスが利用できない場合や有効化できない場合はエラーを報告します。
+<a id="project-structure"></a>
 
-録音が開始してすぐに停止する場合、VibingSpeech は Qwen3-ASR に対して短すぎる音声を破棄します。
+## プロジェクト構成
 
-Xcode の GUI からアーカイブが失敗する場合は、Terminal から `./script/archive.sh` を使用して arm64 専用のパッケージビルド設定が適用されるようにしてください。
+| パス | 役割 |
+| --- | --- |
+| `VibingSpeech.xcodeproj` | アプリ・単体テスト・UI テストの主要ターゲット |
+| `VibingSpeech/App` | アプリのライフサイクルと録音処理の管理 |
+| `VibingSpeech/Services` | マイク収録・ASR・llama サーバー・モデル取得・権限・貼り付け |
+| `VibingSpeech/Persistence` | 設定・履歴ジャーナル・Hotwords |
+| `VibingSpeech/Views` | SwiftUI 画面と録音オーバーレイ |
+| `Packages/TranscribeRuntime` | transcribe.cpp のモデル管理・推論・キャンセル |
+| `script` | ビルド・起動とリリース用アーカイブの入口 |
+
+SwiftUI、AppKit、Core Audio、AVFoundation、Carbon、ServiceManagement を使用しています。
+
+<a id="license"></a>
 
 ## ライセンス
 
-VibingSpeech は MIT ライセンスの下でライセンスされています。[LICENSE](LICENSE) を参照してください。
-
-使用しているライブラリおよび LLM モデルの個別ライセンスもご確認ください。
+VibingSpeech は [MIT ライセンス](LICENSE)です。ライブラリとモデルの重みにはそれぞれ別のライセンスが適用されます。[TranscribeThirdPartyNotices.txt](VibingSpeech/Resources/TranscribeThirdPartyNotices.txt) に同梱 transcribe.cpp のライセンス通知を収録しています。

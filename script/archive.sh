@@ -13,6 +13,7 @@ APP_ENTITLEMENTS="$ROOT_DIR/VibingSpeech/Resources/VibingSpeech.entitlements"
 
 RESOLVED_BUILD_SETTINGS="$(
   /usr/bin/xcodebuild \
+    -packageAuthorizationProvider netrc \
     -project "$PROJECT" \
     -scheme "$SCHEME" \
     -configuration "$CONFIGURATION" \
@@ -39,6 +40,7 @@ rm -rf "$ARCHIVE_PATH" "$APP_PATH"
 # Pass ARCHS=arm64 to Swift package builds.
 # Archive unsigned here; signing is done in the steps below.
 /usr/bin/xcodebuild archive \
+  -packageAuthorizationProvider netrc \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
   -configuration "$CONFIGURATION" \
@@ -110,6 +112,16 @@ if ! /usr/bin/codesign -dvv "$APP_PATH" 2>&1 | grep "flags=.*runtime" >/dev/null
   echo "ERROR: Hardened Runtime flag not present on $APP_PATH" >&2
   exit 1
 fi
+
+# Ad-hoc nested code has no Team ID, so Hardened Runtime needs this exception.
+SIGNED_ENTITLEMENTS="$(/usr/bin/codesign -d --entitlements :- "$APP_PATH" 2>/dev/null)"
+for entitlement in com.apple.security.cs.disable-library-validation com.apple.security.device.audio-input; do
+  entitlement_key_path="${entitlement//./\\.}"
+  if [[ "$(/usr/bin/printf '%s' "$SIGNED_ENTITLEMENTS" | /usr/bin/plutil -extract "$entitlement_key_path" raw -o - -)" != "true" ]]; then
+    echo "ERROR: Required entitlement $entitlement is missing from $APP_PATH" >&2
+    exit 1
+  fi
+done
 
 # Strip quarantine for manual distribution (optional)
 xattr -dr com.apple.quarantine "$APP_PATH" 2>/dev/null || true

@@ -232,7 +232,7 @@ final class PersistenceTests: XCTestCase {
             finalText: text,
             timestamp: timestamp,
             durationSeconds: 1,
-            modelVariant: .qwen3_0_6b_8bit,
+            modelVariant: .graniteSpeech5,
             wasProcessedByLLM: false
         )
     }

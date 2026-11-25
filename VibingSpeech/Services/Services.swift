@@ -5,21 +5,7 @@ import Carbon
 import CoreAudio
 import Foundation
 import ServiceManagement
-
-#if canImport(MLX)
-import MLX
-#endif
-
-#if canImport(MLXAudioSTT)
-import MLXAudioSTT
-#endif
-
-#if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
-import HuggingFace
-import MLXLLM
-import MLXLMCommon
-import Tokenizers
-#endif
+import TranscribeRuntime
 
 @MainActor
 final class AppearanceService {
@@ -777,7 +763,7 @@ enum ASRServiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .modelUnavailable:
-            "Qwen3-ASR is not linked or could not be loaded."
+            "The speech recognition model could not be loaded."
         case .shortAudio:
             "The recording is too short to transcribe safely."
         case .emptyResult:
@@ -838,7 +824,7 @@ enum TextProcessingServiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .modelUnavailable:
-            "Qwen3.5 text processing is not linked or could not be loaded."
+            "The text processing model could not be loaded."
         case .emptyPrompt:
             "A custom text processing prompt is required."
         case .emptyResult:
@@ -849,265 +835,211 @@ enum TextProcessingServiceError: LocalizedError {
     }
 }
 
-#if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
-private enum TextProcessingDownloaderError: LocalizedError {
-    case invalidRepositoryID(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidRepositoryID(let id):
-            "Invalid Hugging Face repository ID: '\(id)'. Expected format 'namespace/name'."
-        }
-    }
-}
-
-private struct TextProcessingHubDownloader: MLXLMCommon.Downloader {
-    private let hubClient = HuggingFace.HubClient()
-
-    func download(
-        id: String,
-        revision: String?,
-        matching patterns: [String],
-        useLatest: Bool,
-        progressHandler: @Sendable @escaping (Progress) -> Void
-    ) async throws -> URL {
-        guard let repoID = HuggingFace.Repo.ID(rawValue: id) else {
-            throw TextProcessingDownloaderError.invalidRepositoryID(id)
-        }
-        return try await hubClient.downloadSnapshot(
-            of: repoID,
-            revision: revision ?? "main",
-            matching: patterns,
-            progressHandler: { @MainActor progress in
-                progressHandler(progress)
-            }
-        )
-    }
-}
-
-private struct TextProcessingTokenizerLoader: MLXLMCommon.TokenizerLoader {
-    func load(from directory: URL) async throws -> any MLXLMCommon.Tokenizer {
-        let tokenizer = try await Tokenizers.AutoTokenizer.from(modelFolder: directory)
-        return TextProcessingTokenizer(tokenizer)
-    }
-}
-
-private struct TextProcessingTokenizer: MLXLMCommon.Tokenizer {
-    private let tokenizer: any Tokenizers.Tokenizer
-
-    init(_ tokenizer: any Tokenizers.Tokenizer) {
-        self.tokenizer = tokenizer
-    }
-
-    func encode(text: String, addSpecialTokens: Bool) -> [Int] {
-        tokenizer.encode(text: text, addSpecialTokens: addSpecialTokens)
-    }
-
-    func decode(tokenIds: [Int], skipSpecialTokens: Bool) -> String {
-        tokenizer.decode(tokens: tokenIds, skipSpecialTokens: skipSpecialTokens)
-    }
-
-    func convertTokenToId(_ token: String) -> Int? {
-        tokenizer.convertTokenToId(token)
-    }
-
-    func convertIdToToken(_ id: Int) -> String? {
-        tokenizer.convertIdToToken(id)
-    }
-
-    var bosToken: String? { tokenizer.bosToken }
-    var eosToken: String? { tokenizer.eosToken }
-    var unknownToken: String? { tokenizer.unknownToken }
-
-    func applyChatTemplate(
-        messages: [[String: any Sendable]],
-        tools: [[String: any Sendable]]?,
-        additionalContext: [String: any Sendable]?
-    ) throws -> [Int] {
-        do {
-            return try tokenizer.applyChatTemplate(
-                messages: messages,
-                tools: tools,
-                additionalContext: additionalContext
-            )
-        } catch Tokenizers.TokenizerError.missingChatTemplate {
-            throw MLXLMCommon.TokenizerError.missingChatTemplate
-        }
-    }
-}
-#endif
-
-#if canImport(MLX) && canImport(MLXAudioSTT)
-private final class LiveASRSession: @unchecked Sendable {
-    private let session: StreamingInferenceSession
-    private let eventConsumer: Task<Void, Never>
-
-    init(
-        model: Qwen3ASRModel,
-        languageHint: String?,
-        onUpdate: @escaping @Sendable (LiveTranscriptSnapshot) -> Void
-    ) {
-        let session = StreamingInferenceSession(
-            model: model,
-            config: StreamingConfig(language: languageHint)
-        )
-        self.session = session
-        onUpdate(LiveTranscriptSnapshot(finalizedText: "", partialText: "", statusMessage: "Listening..."))
-        eventConsumer = Task {
-            for await event in session.events {
-                Self.handle(event, onUpdate: onUpdate)
-            }
-        }
-    }
-
-    func ingest(samples: [Float]) {
-        guard !samples.isEmpty else { return }
-        session.feedAudio(samples: samples)
-    }
-
-    func finish() async {
-        session.stop()
-        await eventConsumer.value
-    }
-
-    private static func handle(
-        _ event: TranscriptionEvent,
-        onUpdate: @escaping @Sendable (LiveTranscriptSnapshot) -> Void
-    ) {
-        switch event {
-        case .displayUpdate(let confirmedText, let provisionalText):
-            onUpdate(LiveTranscriptSnapshot(
-                finalizedText: confirmedText,
-                partialText: provisionalText,
-                statusMessage: nil
-            ))
-        case .confirmed(let text):
-            onUpdate(LiveTranscriptSnapshot(finalizedText: text, partialText: "", statusMessage: nil))
-        case .provisional(let text):
-            onUpdate(LiveTranscriptSnapshot(finalizedText: "", partialText: text, statusMessage: nil))
-        case .ended(let fullText):
-            onUpdate(LiveTranscriptSnapshot(finalizedText: fullText, partialText: "", statusMessage: nil))
-        case .stats:
-            break
-        }
-    }
-}
-#endif
-
 actor ASRService {
     private(set) var loadedVariant: ASRModelVariant?
+    private let native = GGUFTranscriber()
     private var loadRequestID = UUID()
+    private var loadTask: (id: UUID, variant: ASRModelVariant, task: Task<Void, Error>)?
+    private var unloadTask: Task<Void, Never>?
+    private var inferenceRequestID = UUID()
 
-    #if canImport(MLX) && canImport(MLXAudioSTT)
-    private var model: Qwen3ASRModel?
-    #endif
-
-    #if canImport(MLX) && canImport(MLXAudioSTT)
-    private var liveSession: LiveASRSession?
+    private let liveNative = GGUFStreamingTranscriber()
+    private var liveModelLoaded = false
+    private var liveLoadGeneration = UUID()
+    private var liveLoadTask: (id: UUID, task: Task<Void, Error>)?
     private var liveSessionRequestID = UUID()
-    #endif
+    private var liveSessionActive = false
+    private var liveOnUpdate: (@Sendable (LiveTranscriptSnapshot) -> Void)?
+    private var lastLiveSnapshot: LiveTranscriptSnapshot?
 
     func load(variant: ASRModelVariant) async throws {
-        #if canImport(MLX) && canImport(MLXAudioSTT)
-        if loadedVariant == variant, model != nil { return }
-        let requestID = UUID()
-        loadRequestID = requestID
-        liveSessionRequestID = UUID()
-        await unloadLoadedModels()
-        var loadedModel: Qwen3ASRModel? = try await Qwen3ASRModel.fromPretrained(variant.huggingFaceModelID)
-        guard loadRequestID == requestID else {
-            loadedModel = nil
-            MLX.Memory.clearCache()
+        if loadedVariant == variant { return }
+        if let pending = loadTask, pending.variant == variant {
+            try await pending.task.value
+            guard loadRequestID == pending.id else { throw CancellationError() }
+            loadedVariant = variant
             return
         }
-        model = loadedModel
-        loadedModel = nil
-        loadedVariant = variant
-        #else
+        let requestID = UUID()
+        loadRequestID = requestID
+        inferenceRequestID = UUID()
         loadedVariant = nil
-        throw ASRServiceError.modelUnavailable
-        #endif
+        let previousUnload = unloadTask
+        let previous = loadTask?.task
+        previous?.cancel()
+        let task = Task { [native] in
+            _ = await previous?.result
+            await previousUnload?.value
+            try Task.checkCancellation()
+            await self.finishLiveTranscription()
+            try Task.checkCancellation()
+            await native.unload()
+            let url = try await GGUFCache.shared.download(model: GGUFModel(
+                repository: variant.huggingFaceModelID, filename: variant.filename
+            ))
+            try Task.checkCancellation()
+            try await native.load(modelURL: url)
+            try Task.checkCancellation()
+        }
+        loadTask = (requestID, variant, task)
+        do {
+            try await task.value
+            guard loadRequestID == requestID else { throw CancellationError() }
+            loadTask = nil
+            loadedVariant = variant
+        } catch {
+            if loadRequestID == requestID { loadTask = nil }
+            throw error
+        }
     }
 
     func unload() async {
-        loadRequestID = UUID()
-        #if canImport(MLX) && canImport(MLXAudioSTT)
-        liveSessionRequestID = UUID()
-        #endif
-        await unloadLoadedModels()
+        let requestID = UUID()
+        loadRequestID = requestID
+        inferenceRequestID = UUID()
+        loadedVariant = nil
+        let pending = loadTask?.task
+        loadTask = nil
+        pending?.cancel()
+        let previousUnload = unloadTask
+        let task = Task { [native] in
+            await previousUnload?.value
+            _ = await pending?.result
+            await native.unload()
+            await self.releaseLiveModels()
+        }
+        unloadTask = task
+        await task.value
     }
 
-    private func unloadLoadedModels() async {
-        #if canImport(MLX) && canImport(MLXAudioSTT)
-        let sessionToFinish = liveSession
-        model = nil
-        if let sessionToFinish {
-            await sessionToFinish.finish()
-            if liveSession === sessionToFinish {
-                liveSession = nil
-            }
-        }
-        MLX.Memory.clearCache()
-        #endif
-        loadedVariant = nil
+    private func releaseLiveModels() async {
+        await cancelLiveTranscription()
+        await liveNative.unload()
+        liveModelLoaded = false
     }
 
     func startLiveTranscription(
         languageMode: LanguageMode,
         onUpdate: @escaping @Sendable (LiveTranscriptSnapshot) -> Void
     ) async throws {
-        #if canImport(MLX) && canImport(MLXAudioSTT)
         let requestID = UUID()
         liveSessionRequestID = requestID
-        guard let model else { throw ASRServiceError.modelUnavailable }
-        if let sessionToFinish = liveSession {
-            await sessionToFinish.finish()
-            guard liveSessionRequestID == requestID else { throw CancellationError() }
-            if liveSession === sessionToFinish {
-                liveSession = nil
-            } else if liveSession != nil {
-                throw CancellationError()
-            }
-        }
+        liveSessionActive = false
+        liveOnUpdate = nil
+        await unloadTask?.value
         guard liveSessionRequestID == requestID else { throw CancellationError() }
-        liveSession = LiveASRSession(
-            model: model,
-            languageHint: languageMode.asrLanguageHint,
-            onUpdate: onUpdate
-        )
-        #else
-        throw ASRServiceError.modelUnavailable
-        #endif
+        await liveNative.cancel()
+        guard liveSessionRequestID == requestID else { throw CancellationError() }
+        onUpdate(LiveTranscriptSnapshot(finalizedText: "", partialText: "", statusMessage: "Preparing Nemotron 3.5..."))
+        try await loadLiveModelIfNeeded()
+        guard liveSessionRequestID == requestID else { throw CancellationError() }
+        try await liveNative.start(language: LiveASRModel.language(for: languageMode))
+        guard liveSessionRequestID == requestID else { throw CancellationError() }
+        liveSessionActive = true
+        liveOnUpdate = onUpdate
+        let initial = LiveTranscriptSnapshot(finalizedText: "", partialText: "", statusMessage: "Listening...")
+        lastLiveSnapshot = initial
+        onUpdate(initial)
     }
 
-    func ingestLiveSamples(_ samples: [Float]) {
-        #if canImport(MLX) && canImport(MLXAudioSTT)
-        liveSession?.ingest(samples: samples)
-        #endif
+    private func loadLiveModelIfNeeded() async throws {
+        if liveModelLoaded { return }
+        if let pending = liveLoadTask {
+            try await pending.task.value
+            guard liveLoadGeneration == pending.id else { throw CancellationError() }
+            liveModelLoaded = true
+            return
+        }
+        let generation = UUID()
+        liveLoadGeneration = generation
+        let task = Task { [liveNative] in
+            let url = try await GGUFCache.shared.download(model: GGUFModel(
+                repository: LiveASRModel.huggingFaceModelID, filename: LiveASRModel.filename
+            ))
+            try Task.checkCancellation()
+            try await liveNative.load(modelURL: url)
+            try Task.checkCancellation()
+        }
+        liveLoadTask = (generation, task)
+        do {
+            try await task.value
+            guard liveLoadGeneration == generation else { throw CancellationError() }
+            liveLoadTask = nil
+            liveModelLoaded = true
+        } catch {
+            if liveLoadTask?.id == generation { liveLoadTask = nil }
+            throw error
+        }
+    }
+
+    func ingestLiveSamples(_ samples: [Float]) async {
+        guard liveSessionActive, !samples.isEmpty else { return }
+        let requestID = liveSessionRequestID
+        do {
+            let snapshot = try await liveNative.feed(samples: samples)
+            guard liveSessionRequestID == requestID, liveSessionActive else { return }
+            publishLiveSnapshot(snapshot)
+        } catch {
+            guard liveSessionRequestID == requestID else { return }
+            liveSessionActive = false
+            liveOnUpdate?(LiveTranscriptSnapshot(
+                finalizedText: lastLiveSnapshot?.finalizedText ?? "",
+                partialText: lastLiveSnapshot?.partialText ?? "",
+                statusMessage: "Live transcription unavailable: \(error.localizedDescription)"
+            ))
+            liveOnUpdate = nil
+        }
     }
 
     func finishLiveTranscription() async {
-        #if canImport(MLX) && canImport(MLXAudioSTT)
-        liveSessionRequestID = UUID()
-        if let sessionToFinish = liveSession {
-            await sessionToFinish.finish()
-            if liveSession === sessionToFinish {
-                liveSession = nil
-            }
+        let requestID = UUID()
+        liveSessionRequestID = requestID
+        guard liveSessionActive else {
+            await cancelLiveTranscription()
+            return
         }
-        #endif
+        liveSessionActive = false
+        do {
+            let snapshot = try await liveNative.finish()
+            guard liveSessionRequestID == requestID else { return }
+            publishLiveSnapshot(snapshot)
+        } catch {
+            // Final output always comes from the separate complete-recording ASR pass.
+            guard liveSessionRequestID == requestID else { return }
+            await liveNative.cancel()
+        }
+        guard liveSessionRequestID == requestID else { return }
+        liveOnUpdate = nil
+        lastLiveSnapshot = nil
     }
 
     func cancelLiveTranscription() async {
-        #if canImport(MLX) && canImport(MLXAudioSTT)
         liveSessionRequestID = UUID()
-        if let sessionToFinish = liveSession {
-            await sessionToFinish.finish()
-            if liveSession === sessionToFinish {
-                liveSession = nil
-            }
-        }
-        #endif
+        liveSessionActive = false
+        liveOnUpdate = nil
+        lastLiveSnapshot = nil
+        liveLoadGeneration = UUID()
+        let pending = liveLoadTask?.task
+        liveLoadTask = nil
+        pending?.cancel()
+        await liveNative.cancel()
+        _ = await pending?.result
+    }
+
+    private func publishLiveSnapshot(_ nativeSnapshot: GGUFStreamSnapshot) {
+        let snapshot = LiveTranscriptSnapshot(
+            finalizedText: nativeSnapshot.committedText,
+            partialText: nativeSnapshot.pendingText,
+            statusMessage: nil
+        )
+        guard snapshot != lastLiveSnapshot else { return }
+        lastLiveSnapshot = snapshot
+        liveOnUpdate?(snapshot)
+    }
+
+    func cancelInference() async {
+        inferenceRequestID = UUID()
+        await native.cancelPendingTranscription()
     }
 
     func transcribe(
@@ -1116,80 +1048,83 @@ actor ASRService {
         context: String = ""
     ) async throws -> ASRResult {
         guard samples.count >= MicrophoneRecorder.minimumSamplesForASR else { throw ASRServiceError.shortAudio }
-        #if canImport(MLX) && canImport(MLXAudioSTT)
-        guard let model else { throw ASRServiceError.modelUnavailable }
-        let languageHint = languageMode.asrLanguageHint
-        let transcription = model.generate(
-            audio: MLXArray(samples),
-            context: context,
-            language: languageHint
+        guard let variant = loadedVariant else { throw ASRServiceError.modelUnavailable }
+        let requestID = UUID()
+        inferenceRequestID = requestID
+        await finishLiveTranscription()
+        guard inferenceRequestID == requestID else { throw CancellationError() }
+        let usesPrompt = variant == .qwen3_1_7b_8bit
+        let result = try await native.transcribe(
+            samples: samples,
+            language: usesPrompt ? languageMode.asrLanguageHint : nil,
+            context: usesPrompt ? context : ""
         )
-        let text = transcription.text
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { throw ASRServiceError.emptyResult }
-        return ASRResult(text: text, detectedLanguage: languageHint ?? transcription.language)
-        #else
-        throw ASRServiceError.modelUnavailable
-        #endif
+        guard inferenceRequestID == requestID else { throw CancellationError() }
+        let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text != "<|nospeech|>" else { throw ASRServiceError.emptyResult }
+        return ASRResult(text: text, detectedLanguage: result.language)
     }
 }
 
 actor TextProcessingBackend {
-    #if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
-    private var modelContainer: ModelContainer?
-    #endif
+    private let server = LocalLlamaServer()
+    private var generation = UUID()
 
     func load() async throws {
-        #if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
-        if modelContainer != nil { return }
-        let configuration = ModelConfiguration(id: TextProcessingService.modelIdentifier)
-        modelContainer = try await LLMModelFactory.shared.loadContainer(
-            from: TextProcessingHubDownloader(),
-            using: TextProcessingTokenizerLoader(),
-            configuration: configuration
-        )
-        #else
-        throw TextProcessingServiceError.modelUnavailable
-        #endif
+        let requestID = UUID()
+        generation = requestID
+        let url = try await GGUFCache.shared.download(model: GGUFModel(
+            repository: TextProcessingService.modelIdentifier,
+            filename: TextProcessingService.modelFilename
+        ))
+        try Task.checkCancellation()
+        guard generation == requestID else { throw CancellationError() }
+        try await server.start(modelURL: url, additionalArguments: [
+            "--ctx-size", "32768"
+        ])
+        guard generation == requestID else { throw CancellationError() }
     }
 
-    func unload() {
-        #if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
-        modelContainer = nil
-        Memory.clearCache()
-        #endif
+    func unload() async {
+        generation = UUID()
+        await server.stop()
     }
 
     func process(_ text: String, systemPrompt: String) async throws -> String {
-        #if canImport(MLXLLM) && canImport(MLXLMCommon) && canImport(HuggingFace) && canImport(Tokenizers)
-        guard let modelContainer else { throw TextProcessingServiceError.modelUnavailable }
-        let parameters = GenerateParameters(
-            maxTokens: TextProcessingService.maxOutputTokens,
-            temperature: TextProcessingService.generationTemperature,
-            topP: TextProcessingService.generationTopP,
-            topK: TextProcessingService.generationTopK,
-            minP: TextProcessingService.generationMinP,
-            repetitionPenalty: TextProcessingService.generationRepetitionPenalty,
-            presencePenalty: TextProcessingService.generationPresencePenalty
-        )
-        let output: String
-        do {
-            let session = ChatSession(
-                modelContainer,
-                instructions: systemPrompt,
-                generateParameters: parameters,
-                additionalContext: TextProcessingService.chatTemplateContext
-            )
-            output = try await session.respond(to: text)
-        } catch {
-            throw TextProcessingServiceError.generationFailed(error.localizedDescription)
+        let requestID = generation
+        let body = try JSONSerialization.data(withJSONObject: Self.requestBody(text: text, systemPrompt: systemPrompt))
+        let data = try await server.request(path: "/v1/chat/completions", body: body)
+        guard generation == requestID else { throw CancellationError() }
+        let response = try JSONDecoder().decode(ChatResponse.self, from: data)
+        let output = response.choices.first?.message.content?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !output.isEmpty else { throw TextProcessingServiceError.emptyResult }
+        guard response.choices.first?.finish_reason != "length" else {
+            throw TextProcessingServiceError.generationFailed("The response exceeded the output limit.")
         }
-        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { throw TextProcessingServiceError.emptyResult }
-        return trimmed
-        #else
-        throw TextProcessingServiceError.modelUnavailable
-        #endif
+        return output
+    }
+
+    nonisolated static func requestBody(text: String, systemPrompt: String) -> [String: Any] {
+        [
+            "messages": [["role": "system", "content": systemPrompt], ["role": "user", "content": text]],
+            "stream": false,
+            "max_tokens": TextProcessingService.maxOutputTokens,
+            "temperature": TextProcessingService.generationTemperature,
+            "top_p": TextProcessingService.generationTopP,
+            "top_k": TextProcessingService.generationTopK,
+            "min_p": TextProcessingService.generationMinP,
+            "repeat_penalty": TextProcessingService.generationRepetitionPenalty,
+            "presence_penalty": TextProcessingService.generationPresencePenalty
+        ]
+    }
+
+    private struct ChatResponse: Decodable {
+        let choices: [Choice]
+        struct Choice: Decodable {
+            let message: Message
+            let finish_reason: String?
+        }
+        struct Message: Decodable { let content: String? }
     }
 }
 
@@ -1240,15 +1175,16 @@ final class LaunchAtLoginService: ObservableObject {
 
 @MainActor
 final class TextProcessingService: ObservableObject {
-    nonisolated static let modelIdentifier = "mlx-community/Qwen3.5-4B-MLX-4bit"
+    nonisolated static let modelIdentifier = "unsloth/Qwen3-4B-Instruct-2507-GGUF"
+    nonisolated static let modelFilename = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
     nonisolated static let maxOutputTokens = 16_384
+    // Qwen3 Instruct 2507 is non-thinking; avoid presence penalties when copying dictated text.
     nonisolated static let generationTemperature: Float = 0.7
     nonisolated static let generationTopP: Float = 0.8
     nonisolated static let generationTopK = 20
     nonisolated static let generationMinP: Float = 0
-    nonisolated static let generationPresencePenalty: Float = 1.5
+    nonisolated static let generationPresencePenalty: Float = 0
     nonisolated static let generationRepetitionPenalty: Float = 1
-    nonisolated static let chatTemplateContext: [String: any Sendable] = ["enable_thinking": false]
 
     @Published private(set) var isReady = false
     @Published private(set) var isLoading = false
@@ -1260,8 +1196,10 @@ final class TextProcessingService: ObservableObject {
     private var loadTask: (id: UUID, task: Task<Void, Error>)?
     private var loadGeneration = UUID()
     private var enabled = false
+    private var unloadTask: Task<Void, Never>?
 
     func setEnabled(_ enabled: Bool) {
+        guard self.enabled != enabled else { return }
         self.enabled = enabled
         loadGeneration = UUID()
         let generation = loadGeneration
@@ -1270,13 +1208,17 @@ final class TextProcessingService: ObservableObject {
                 try? await loadIfNeeded(generation: generation)
             }
         } else {
-            loadTask?.task.cancel()
+            let pendingLoad = loadTask?.task
+            pendingLoad?.cancel()
             loadTask = nil
             isLoading = false
             isReady = false
             statusMessage = "Text processor unloaded"
-            Task {
+            let previousUnload = unloadTask
+            unloadTask = Task { [backend] in
+                await previousUnload?.value
                 await backend.unload()
+                _ = await pendingLoad?.result
             }
             onStateChange?()
         }
@@ -1293,22 +1235,47 @@ final class TextProcessingService: ObservableObject {
         let input = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { throw TextProcessingServiceError.emptyResult }
 
-        try await loadIfNeeded(generation: loadGeneration)
-        return try await backend.process(input, systemPrompt: systemPrompt)
+        let generation = loadGeneration
+        try await loadIfNeeded(generation: generation)
+        guard enabled, loadGeneration == generation, isReady else { throw CancellationError() }
+        let output = try await backend.process(input, systemPrompt: systemPrompt)
+        return preset == .bulletPoints ? BulletPointFormatter.normalized(output) : output
     }
 
     func unloadAfterIdle() async {
+        await unload(status: "Text processor unloaded after idle timeout")
+    }
+
+    func cancelProcessing() async {
+        await unload(status: "Text processor unloaded after cancellation")
+    }
+
+    private func unload(status: String) async {
+        isReady = false
+        isLoading = false
         loadGeneration = UUID()
-        loadTask?.task.cancel()
+        let generation = loadGeneration
+        let pendingLoad = loadTask?.task
+        pendingLoad?.cancel()
         loadTask = nil
-        await backend.unload()
+        let previousUnload = unloadTask
+        let task = Task { [backend] in
+            await previousUnload?.value
+            await backend.unload()
+            _ = await pendingLoad?.result
+        }
+        unloadTask = task
+        await task.value
+        guard loadGeneration == generation else { return }
         isLoading = false
         isReady = false
-        statusMessage = "Text processor unloaded after idle timeout"
+        statusMessage = status
         onStateChange?()
     }
 
     private func loadIfNeeded(generation: UUID) async throws {
+        await unloadTask?.value
+        guard loadGeneration == generation, enabled else { throw CancellationError() }
         if isReady { return }
         if let loadTask {
             try await loadTask.task.value
@@ -1316,7 +1283,7 @@ final class TextProcessingService: ObservableObject {
                 if !enabled {
                     await backend.unload()
                 }
-                return
+                throw CancellationError()
             }
             return
         }
@@ -1338,7 +1305,7 @@ final class TextProcessingService: ObservableObject {
                 if !enabled {
                     await backend.unload()
                 }
-                return
+                throw CancellationError()
             }
             isLoading = false
             isReady = true
@@ -1348,7 +1315,7 @@ final class TextProcessingService: ObservableObject {
             if loadTask?.id == taskID {
                 loadTask = nil
             }
-            guard loadGeneration == generation, enabled else { return }
+            guard loadGeneration == generation, enabled else { throw CancellationError() }
             isLoading = false
             isReady = false
             statusMessage = error.localizedDescription

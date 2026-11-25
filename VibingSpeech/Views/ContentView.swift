@@ -255,7 +255,7 @@ private struct ModelActivityPanel: View {
     @ObservedObject var textProcessing: TextProcessingService
 
     private var isVisible: Bool {
-        coordinator.asrModelIsLoading || textProcessing.isLoading
+        coordinator.asrModelIsLoading || coordinator.liveModelIsLoading || textProcessing.isLoading
     }
 
     var body: some View {
@@ -273,6 +273,13 @@ private struct ModelActivityPanel: View {
                     ModelActivityRow(
                         title: "ASR",
                         message: "Downloading or loading \(settings.asrModelVariant.displayName) (\(settings.asrModelVariant.estimatedDownloadSize))"
+                    )
+                }
+
+                if coordinator.liveModelIsLoading {
+                    ModelActivityRow(
+                        title: "Live ASR",
+                        message: "Downloading or loading \(LiveASRModel.displayName) (\(LiveASRModel.estimatedDownloadSize))"
                     )
                 }
 
@@ -392,7 +399,17 @@ private struct SettingsCard: View {
                         .toggleStyle(.switch)
                         .disabled(coordinator.phase != .idle)
                 } footer: {
-                    Text("Shows live text in the overlay and still pastes once when recording stops.")
+                    Text("Uses Nemotron 3.5 for live review. Final transcription still runs on the complete recording after stop.")
+                }
+                if settings.liveTranscriptionEnabled {
+                    Divider()
+                    SettingsRow("Live Model") {
+                        Text(LiveASRModel.displayName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } footer: {
+                        Text("Japanese and multilingual streaming · \(LiveASRModel.estimatedDownloadSize) download")
+                    }
                 }
             }
 
@@ -436,7 +453,7 @@ private struct SettingsCard: View {
                     }
                     Divider()
                     SettingsRow("Model") {
-                        Text(TextProcessingService.modelIdentifier)
+                        Text("Qwen3 4B Instruct 2507 (Q4_K_M)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -464,7 +481,7 @@ private struct SettingsCard: View {
 
                 Divider()
 
-                SettingsRow("ASR Model") {
+                SettingsRow("Final ASR Model") {
                     Picker("", selection: $settings.asrModelVariant) {
                         ForEach(ASRModelVariant.allCases) { variant in
                             Text("\(variant.displayName) (\(variant.estimatedDownloadSize))").tag(variant)
@@ -588,7 +605,7 @@ private struct HotwordsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Hotword Enhancement")
                         .font(.headline)
-                    Text("Add proper nouns, terms, names to improve recognition accuracy.")
+                    Text("Vocabulary hints apply to final Qwen3-ASR transcription. Granite CTC does not support hotword hints.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

@@ -1,5 +1,49 @@
 # Changelog
 
+## 2026-11-25
+
+### Fixed
+
+- Normalized Bullet Points markers and spacing without rewriting the model’s text, including note lines returned without bullet markers.
+- Fixed signed app startup with the bundled CTranscribe framework by adding the library-validation exception required for ad-hoc signatures under Hardened Runtime. Enabled signing in the Debug run script, verified bundle signatures, and checked sustained startup; added archive entitlement checks.
+- Fixed Auto language selection for native Nemotron streaming while preserving explicit language choices.
+
+### Added
+
+- Added a Home preparation indicator for the initial Nemotron download and model loading.
+
+### Changed
+
+- Switched Text Processing from Qwen3.5 2B Q8_0 to Qwen3 4B Instruct 2507 Q4_K_M after comparison, applied its recommended sampling settings with presence penalty disabled, and removed redundant thinking-mode configuration.
+- Rewrote the built-in Text Processing prompts in concise English without examples: Fix Typos requests minimal corrections, and Bullet Points preserves spoken ideas and list items with a heading only when the source introduces one.
+- Replaced only the Text Processing model with Qwen3.5 2B Q8_0 from Unsloth, retaining non-thinking-only generation and applying its recommended text sampling parameters.
+- Replaced live Qwen3-ASR MLX inference with Nemotron 3.5 ASR Streaming 0.6B Q8_0 through the bundled transcribe.cpp runtime, with Japanese/Auto language support and a fixed Live Model display.
+- Preserved native committed/tentative text boundaries in the live overlay and finalized buffered audio before the separate complete-recording ASR pass.
+- Configured public package resolution in build scripts to avoid macOS Keychain authentication prompts.
+
+### Removed
+
+- Removed the MLX runtime and package dependencies, former live model picker/settings, unused segment-buffer implementation, and compatibility mappings for retired ASR models.
+
+## 2026-11-24
+
+### Added
+
+- Added a separate live MLX model picker and shared Hugging Face GGUF caching with SHA-256 verification.
+- Added an app-owned llama.cpp server with six nondefault port candidates, authenticated readiness checks, and shutdown on disable, cancellation, idle unload, and app exit.
+
+### Changed
+
+- Updated the app identity to version 2.3.0 (build 2) in both Debug and Release configurations.
+- Refreshed the English and Japanese READMEs with the current model/runtime split, setup and usage, cache and server lifecycle, temporary-directory test command, and ad-hoc archive signing; repaired Japanese navigation anchors and labeled screenshots from the earlier model configuration.
+- Switched final ASR to transcribe.cpp with multilingual Granite Speech 5.0 470M Q8_0 and Qwen3-ASR 1.7B Q8_0, while retaining MLX models for live review.
+- Replaced Qwen3.5 MLX Text Processing with LFM3 1.7B Q6_K through llama.cpp in non-thinking mode.
+- Migrated removed ASR settings while preserving saved history and its original model identifiers.
+
+### Removed
+
+- Removed the Qwen3-ASR 1.7B 4-bit model selection and obsolete MLX Text Processing implementation and direct package links.
+
 ## DATE UNKNOWN
 
 ### Fixed

@@ -13,6 +13,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        LocalLlamaServer.shutdownAll()
+    }
+
     func applicationDidBecomeActive(_ notification: Notification) {
         coordinator.refreshPermissions()
     }
@@ -72,6 +76,7 @@ final class AppCoordinator: ObservableObject {
     @Published var phase: RecordingPhase = .idle
     @Published var asrModelLoaded = false
     @Published var asrModelIsLoading = false
+    @Published private(set) var liveModelIsLoading = false
     @Published var asrStatusMessage = "Loading model..."
     @Published var lastError: String?
     @Published var availableMicrophones: [MicrophoneDevice] = [.systemDefault]
@@ -94,7 +99,9 @@ final class AppCoordinator: ObservableObject {
     private var liveTranscriptionActive = false
     private var recordingOperationID: UUID?
     private var recordingStartupInProgress = false
+    private var recordingCancellationTask: Task<Void, Never>?
     private let isUITesting = ProcessInfo.processInfo.arguments.contains("--ui-testing")
+        || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
     init() {
         appearanceService.apply(settings.appearanceMode)
@@ -183,6 +190,7 @@ final class AppCoordinator: ObservableObject {
 
     func loadASRModel() async {
         guard phase == .idle || phase == .starting else { return }
+        await recordingCancellationTask?.value
         await cancelModelUnloadAndWait()
         let variant = settings.asrModelVariant
         let generation = UUID()
@@ -227,6 +235,8 @@ final class AppCoordinator: ObservableObject {
             }
         }
 
+        await recordingCancellationTask?.value
+        guard isCurrentRecordingOperation(operationID) else { return }
         await cancelModelUnloadAndWait()
         guard isCurrentRecordingOperation(operationID) else { return }
         permissions.refresh()
@@ -248,6 +258,8 @@ final class AppCoordinator: ObservableObject {
         liveTranscriptionActive = false
         overlayState.resetLiveTranscript(visible: shouldUseLiveTranscription)
         if shouldUseLiveTranscription {
+            liveModelIsLoading = true
+            defer { liveModelIsLoading = false }
             do {
                 let overlayState = self.overlayState
                 try await asrService.startLiveTranscription(
@@ -441,6 +453,7 @@ final class AppCoordinator: ObservableObject {
 
     func cancelRecording() async {
         guard phase != .idle || recordingStartupInProgress || recordingOperationID != nil else { return }
+        let wasTranscribing = phase == .transcribing
         recordingOperationID = nil
         liveTranscriptionActive = false
         phase = .idle
@@ -450,9 +463,22 @@ final class AppCoordinator: ObservableObject {
         if settings.soundFeedbackEnabled {
             soundService.playCancel()
         }
+        if let pending = recordingCancellationTask {
+            await pending.value
+            return
+        }
+        let cleanup = Task { [microphoneRecorder, asrService, textProcessing] in
+            await microphoneRecorder.cancel()
+            await asrService.cancelLiveTranscription()
+            if wasTranscribing {
+                await asrService.cancelInference()
+                await textProcessing.cancelProcessing()
+            }
+        }
+        recordingCancellationTask = cleanup
+        await cleanup.value
+        recordingCancellationTask = nil
         scheduleModelUnloadIfNeeded()
-        await microphoneRecorder.cancel()
-        await asrService.cancelLiveTranscription()
     }
 
     private func isCurrentRecordingOperation(_ operationID: UUID) -> Bool {
@@ -535,6 +561,7 @@ final class AppCoordinator: ObservableObject {
         guard delayMinutes > 0,
               phase == .idle,
               !recordingStartupInProgress,
+              recordingCancellationTask == nil,
               !asrModelIsLoading,
               !textProcessing.isLoading,
               asrModelLoaded || shouldUnloadTextProcessor else { return }
@@ -566,6 +593,7 @@ final class AppCoordinator: ObservableObject {
         guard modelUnloadGeneration == generation,
               phase == .idle,
               !recordingStartupInProgress,
+              recordingCancellationTask == nil,
               !asrModelIsLoading,
               !textProcessing.isLoading else { return }
         let shouldUnloadTextProcessor = settings.textProcessingEnabled && textProcessing.isReady

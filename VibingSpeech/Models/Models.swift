@@ -7,7 +7,8 @@ struct TranscriptionRecord: Codable, Identifiable, Equatable {
     var timestamp: Date
     var wordCount: Int
     var durationSeconds: Double
-    var modelVariant: ASRModelVariant
+    // Historical model identifiers remain verbatim when a selection is removed.
+    var modelVariant: String
     var wasProcessedByLLM: Bool
 
     init(
@@ -25,7 +26,7 @@ struct TranscriptionRecord: Codable, Identifiable, Equatable {
         self.timestamp = timestamp
         self.wordCount = WordCounter.count(finalText)
         self.durationSeconds = durationSeconds
-        self.modelVariant = modelVariant
+        self.modelVariant = modelVariant.rawValue
         self.wasProcessedByLLM = wasProcessedByLLM
     }
 }
@@ -62,67 +63,4 @@ struct LiveTranscriptSnapshot: Equatable, Sendable {
     var statusMessage: String?
 
     static let empty = LiveTranscriptSnapshot(finalizedText: "", partialText: "", statusMessage: nil)
-
-    var combinedText: String {
-        LiveTranscriptBuffer.join(finalizedText, partialText)
-    }
-}
-
-struct LiveTranscriptBuffer: Equatable, Sendable {
-    private(set) var finalizedSegments: [String] = []
-    private(set) var partialText: String = ""
-    private(set) var statusMessage: String?
-
-    var finalizedText: String {
-        finalizedSegments.joined(separator: " ")
-    }
-
-    var snapshot: LiveTranscriptSnapshot {
-        LiveTranscriptSnapshot(
-            finalizedText: finalizedText,
-            partialText: partialText,
-            statusMessage: statusMessage
-        )
-    }
-
-    var combinedText: String {
-        Self.join(finalizedText, partialText)
-    }
-
-    mutating func updatePartial(_ text: String) {
-        partialText = Self.normalized(text)
-        statusMessage = nil
-    }
-
-    mutating func commitFinal(_ text: String) {
-        let normalized = Self.normalized(text)
-        guard !normalized.isEmpty else { return }
-        finalizedSegments.append(normalized)
-        partialText = ""
-        statusMessage = nil
-    }
-
-    mutating func commitPartialIfNeeded() {
-        commitFinal(partialText)
-    }
-
-    mutating func setStatus(_ message: String?) {
-        statusMessage = message
-    }
-
-    mutating func reset() {
-        finalizedSegments = []
-        partialText = ""
-        statusMessage = nil
-    }
-
-    static func join(_ finalizedText: String, _ partialText: String) -> String {
-        [normalized(finalizedText), normalized(partialText)]
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
-    }
-
-    private static func normalized(_ text: String) -> String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 }

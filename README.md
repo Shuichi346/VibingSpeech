@@ -9,173 +9,203 @@
 
 # VibingSpeech
 
-VibingSpeech is a native macOS dictation utility for Apple Silicon Macs. It runs as a menu-bar resident app, starts recording from a global hotkey, transcribes speech locally with Qwen3-ASR, can show an optional live transcript while recording, optionally refines the final text with a local Qwen3 LLM, and pastes the result into the frontmost app through the system pasteboard.
+Local voice dictation for Apple Silicon Macs. Record from a global hotkey, transcribe with Granite Speech or Qwen3-ASR, optionally refine the text with Qwen3 Instruct 2507, and paste it into the app you are using.
+
+VibingSpeech lives in the menu bar. Audio and text inference run on your Mac; models download when first needed.
 
 ## Contents
 
-- [Preview](#preview)
 - [Features](#features)
-- [Tech Stack](#tech-stack)
 - [Requirements](#requirements)
-- [Build and Run](#build-and-run)
+- [Build and run](#build-and-run)
 - [Usage](#usage)
+- [Models](#models)
+- [Privacy and model lifecycle](#privacy-and-model-lifecycle)
+- [Screenshots](#screenshots)
 - [Testing](#testing)
-- [Archive](#archive)
-- [Project Structure](#project-structure)
-- [Permissions and Privacy](#permissions-and-privacy)
+- [Release archive and signing](#release-archive-and-signing)
 - [Troubleshooting](#troubleshooting)
+- [Project structure](#project-structure)
 - [License](#license)
-
-## Preview
-
-<img src="githubreadme/ui-main.png" alt="VibingSpeech home screen" width="480">
-
-<img src="githubreadme/ui-hotwords.png" alt="VibingSpeech hotwords screen" width="480">
-
-<img src="githubreadme/ui-history.png" alt="VibingSpeech history screen" width="480">
-
-<img src="githubreadme/ui-other.png" alt="VibingSpeech other settings screen" width="480">
 
 ## Features
 
-- Global recording hotkey with short-press toggle mode and long-press hold mode.
-- Floating recording overlay with live audio level feedback and transcription state.
-- Optional Live Transcription mode that shows native streaming ASR text in a separate overlay while recording, then batch-transcribes the complete recording and pastes only once when recording stops.
-- Local ASR model selection for Qwen3-ASR 0.6B, 1.7B 4-bit, and 1.7B 8-bit MLX variants.
-- Optional local Text Processing (LLM) with typo correction, bullet-point formatting, or a custom prompt, powered by `mlx-community/Qwen3.5-4B-MLX-4bit` in non-thinking mode.
-- Core Audio microphone selection that applies the chosen input device to the recording engine instead of relying only on the system default.
-- Local hotword manager for names, terms, and proper nouns.
-- Local transcription history with retention settings, search, copy, delete, clear, and original-ASR copy actions.
-- App-wide appearance mode, launch-at-login, and idle model auto-unload controls.
-- Pasteboard-safe text insertion into the active app with clipboard restoration.
-- Menu-bar lifecycle with no Dock icon.
-- Apple Silicon guard at launch.
-
-## Tech Stack
-
-- SwiftUI and AppKit for the macOS app, menu-bar item, and recording overlay.
-- AVFoundation and Core Audio for microphone capture, device selection, and audio conversion.
-- Carbon and Core Graphics event taps for global hotkeys and simulated paste.
-- `mlx-audio-swift` `0.1.3` with `mlx-swift` `0.31.6` for Qwen3-ASR batch inference and the review-only live transcription stream.
-- `mlx-swift-lm` `3.31.4` with the shared `mlx-swift` `0.31.6` runtime, `swift-huggingface` `0.9.0`, and `swift-transformers` `1.3.3` for local Qwen3 text processing.
-- ServiceManagement for Launch at Login.
-- JSON files in Application Support for local history and hotword persistence.
+- Tap the recording hotkey to start and stop, or hold it while speaking. Press Escape to cancel.
+- Choose a microphone independently of the macOS default, including when Bluetooth headphones are used for playback.
+- Review an optional live transcript above the compact recording overlay. Final text is pasted once after recording stops.
+- Apply typo correction, bullet-point formatting, or a custom instruction with optional local Text Processing.
+- Supply vocabulary hints to final Qwen3-ASR transcription through Hotwords.
+- Search transcription history and copy either edited text or the original ASR result. Choose how long history is retained.
+- Configure appearance, Launch at Login, sound feedback, and idle model unloading.
 
 ## Requirements
 
-- Apple Silicon Mac.
-- macOS 26.0 or newer.
-- Xcode 26.5 or newer.
-- Metal Toolchain. Xcode Settings → Components tab → Other Components → Metal Toolchain.
-- Microphone permission.
-- Accessibility permission for the global hotkey and cross-app paste.
+- An **Apple Silicon Mac** running **macOS 26.0 or later**. Intel Macs are unsupported.
+- Xcode with Swift 6.2 or later. Development was verified with Xcode 27.2 and Swift 6.4.2.
+- Microphone permission for recording and Accessibility permission for global hotkeys and cross-app paste.
+- Internet access for initial dependency and model downloads, plus disk space for the selected models.
+- `llama` for optional Text Processing. If it is missing, the app runs `curl -LsSf https://llama.app/install.sh | sh`. An existing installation is used without replacement.
 
-## Build and Run
+## Build and run
 
-Use the project script from the repository root:
+Clone or download this repository, then run from its root:
 
 ```sh
 ./script/build_and_run.sh --verify
 ```
 
-The script builds `VibingSpeech.xcodeproj`, launches the Debug app bundle, and verifies that the `VibingSpeech` process is running.
+The script stops any running VibingSpeech process, builds the Debug app through `VibingSpeech.xcodeproj` with ad-hoc signing, verifies the app and native framework signatures, launches it, and checks that it stays running for five seconds. Build products are stored in `DerivedData/`. The Xcode project is the primary build entry point; the local Swift package supplies the native ASR wrapper.
 
-Other supported modes:
+Debug and Release keep Hardened Runtime enabled. Ad-hoc signatures have no Team ID, so the app includes the Disable Library Validation entitlement to load its bundled `CTranscribe.framework`.
 
-```sh
-./script/build_and_run.sh
-./script/build_and_run.sh --logs
-./script/build_and_run.sh --telemetry
-./script/build_and_run.sh --debug
-```
+Build scripts select the netrc package authorization provider to avoid Keychain prompts when fetching public dependencies.
 
-The Xcode project is the primary build path. SwiftPM-only release builds are intentionally not used for this app.
+Use `./script/build_and_run.sh` for a normal launch, or pass `--logs`, `--telemetry`, or `--debug` for diagnostics.
 
 ## Usage
 
-1. Launch VibingSpeech.
-2. Allow microphone access when macOS prompts for it.
-3. Enable VibingSpeech in System Settings > Privacy & Security > Accessibility.
-4. Choose a recording hotkey, microphone, Text Processing mode, language mode, and ASR model from Home.
-5. Press the recording hotkey in any app. Release or press again to stop, then VibingSpeech transcribes and pastes the final text.
+1. Launch VibingSpeech and allow microphone access.
+2. Enable it in **System Settings → Privacy & Security → Accessibility**.
+3. In **Home**, choose a microphone and **Final ASR Model**. Wait for model preparation to finish.
+4. Place the cursor in a text field, for example in Notes. Tap **Right Option**, speak, then tap it again to stop and paste the result.
 
-The default hotkey is Right Option. Escape cancels an active recording.
+Right Option is the default hotkey; Left Control is also available. A long press records until the key is released. **Escape** cancels recording or processing.
 
-When Live Transcription is enabled, VibingSpeech shows provisional and confirmed ASR text above the compact recording overlay while recording. That stream is review-only. After recording stops, VibingSpeech transcribes the complete 16 kHz recording in a separate batch pass, then runs optional Text Processing and inserts the result once. This preserves one Qwen3-ASR context for recordings up to 20 minutes; longer recordings are split internally by `mlx-audio-swift` at low-energy boundaries.
+Enable **Live Transcription** to review text while speaking with **Nemotron 3.5 ASR Streaming 0.6B**. The Live Model row shows the fixed Q8_0 model. On first use, Home shows model preparation while the roughly 750 MB download and loading finish; recording starts afterward. Live text is never pasted. After stopping, the complete mono 16 kHz recording is transcribed in one native batch call, then optionally processed by the LLM before insertion. Model input limits are reported as errors rather than silently truncating audio.
 
-Use Hotwords to maintain a local list of names and domain terms, History to search or copy saved dictations, and Other to configure appearance, launch-at-login, and model auto-unload timing.
+Set **Language** to Auto, English, Japanese, or Chinese. It supplies the language hint for Qwen3-ASR and live review; Granite CTC does not accept a language hint. With **Text Processing (LLM)** enabled, it also controls the output language. Auto follows the detected language when available, otherwise the input text.
+
+Enable **Text Processing (LLM)** to select **Fix Typos**, **Bullet Points**, or **Custom**. Processing runs once on the final transcription after recording stops.
+
+Use **Hotwords** for final Qwen3-ASR vocabulary hints; Granite CTC does not support prompt hints. In **History**, search saved dictations, copy the LLM edit or original transcription, and set **Save History** to Forever, One Week, One Day, or Never. Use **Other** for appearance, Launch at Login, and Model Auto-Unload. Closing the main window keeps the app in the menu bar; choose **Show Window** there to reopen it.
+
+Built-in prompts are short and contain no examples. **Fix Typos** requests minimal corrections while preserving meaning. **Bullet Points** condenses spoken thoughts in order, keeps enumerated items separate, and retains a list heading only when it is given in the transcript.
+
+## Models
+
+Final ASR and live review use separate models. Granite Speech is the default final ASR model; choose Qwen3-ASR when you need Hotwords.
+
+| Purpose | Model | Format | Runtime | Approximate download |
+| --- | --- | --- | --- | --- |
+| Final ASR, default | [Granite Speech 5.0 470M TurboCTC](https://huggingface.co/vladers/granite-speech-5.0-470m-turboctc-GGUF) | GGUF Q8_0 | transcribe.cpp | 520 MB |
+| Final ASR | [Qwen3-ASR 1.7B](https://huggingface.co/handy-computer/Qwen3-ASR-1.7B-gguf) | GGUF Q8_0 | transcribe.cpp | 2.2 GB |
+| Live review | [Nemotron 3.5 ASR Streaming 0.6B](https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf) | GGUF Q8_0 | transcribe.cpp | 750 MB |
+| Optional Text Processing | [Qwen3 4B Instruct 2507](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | GGUF Q4_K_M | llama.cpp, non-thinking | 2.5 GB |
+
+The GGUF filenames are:
+
+- `granite-speech-5.0-470m-turboctc-Q8_0.gguf`
+- `Qwen3-ASR-1.7B-Q8_0.gguf`
+- `nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf`
+- `Qwen3-4B-Instruct-2507-Q4_K_M.gguf`
+
+Text Processing uses the non-thinking-only Instruct 2507 model with `temperature=0.7`, `top_p=0.8`, `top_k=20`, `min_p=0.0`, `presence_penalty=0.0`, and `repeat_penalty=1.0` (llama.cpp’s name for repetition penalty). Output is capped at 16,384 tokens. No thinking-mode switch is needed. See the [model’s recommended settings](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507#best-practices).
+
+Qwen3-ASR must use the **handy-computer** conversion. The ggml-org conversion has a different layout intended for llama.cpp and is not interchangeable with this transcribe.cpp model.
+
+Live review uses the transcribe.cpp conversion of Nemotron 3.5, with Japanese and multilingual streaming, explicit language selection or Auto, and 240 ms lookahead. It loads when live transcription is used, alongside the selected final ASR model. The stream remains review-only; the final ASR model processes the complete recording separately after stop.
+
+Both live and final ASR use transcribe.cpp `v0.4.2` through a checksum-pinned XCFramework. Use the linked Nemotron conversion: NVIDIA’s official GGUF has a different architecture and is not interchangeable with it.
+
+## Privacy and model lifecycle
+
+Audio and inference stay local. Settings, Hotwords, and history are stored on your Mac. Model downloads and the optional llama installer require network access.
+
+GGUF files use the shared `~/.cache/huggingface/hub` snapshots/blobs cache with SHA-256 verification. These public models need no token entry in the app. Existing credentials from `HF_TOKEN` or the Hugging Face token file are honored; `HF_TOKEN_PATH` and `HF_HOME` can locate that token file.
+
+Text Processing starts its own llama server on `127.0.0.1` with a private API key. It tries ports **49271, 49283, 49307, 49319, 49331, and 49349**, avoiding llama defaults and leaving other applications' servers untouched.
+
+**Model Auto-Unload** defaults to five idle minutes. During standby, ASR stays loaded; when Text Processing is enabled, its LLM also stays loaded. At the configured timeout, ASR models unload and the owned llama server stops. Models load again when needed for the next recording. Setting the delay to Off disables this idle timeout. The server also stops when Text Processing is disabled, processing is canceled, or the app exits. Downloaded cache files remain available for later use.
+
+## Screenshots
+
+**Home** — recording controls, microphone selection, live review, and optional Text Processing. Scroll within the pane to reach the remaining settings.
+
+<img src="githubreadme/ui-home-2026-11-25.png" alt="Home with Right Option hotkey, System Default microphone, Live Transcription, Text Processing, and Qwen3-ASR selection" width="480">
+
+<details>
+<summary>Hotwords, History, and Other settings</summary>
+
+**Hotwords** — add vocabulary hints for final Qwen3-ASR transcription.
+
+<img src="githubreadme/ui-hotwords-2026-11-25.png" alt="Hotwords entry field and explanation that Granite CTC does not support hints" width="480">
+
+**History** — choose retention, search dictations, and copy edited or original text.
+
+<img src="githubreadme/ui-history-2026-11-25.png" alt="History with Forever retention, search, LLM edits, and expanded original ASR text" width="480">
+
+**Other** — appearance, idle model unloading, and Launch at Login.
+
+<img src="githubreadme/ui-other-2026-11-25.png" alt="Other settings with System appearance, five-minute Model Auto-Unload, and Launch at Login enabled" width="480">
+
+</details>
 
 ## Testing
 
-Run the app unit tests with:
+Run unit tests without loading models or requesting microphone permission:
 
 ```sh
 xcodebuild -project VibingSpeech.xcodeproj \
-  -skipPackagePluginValidation \
+  -packageAuthorizationProvider netrc \
   -scheme VibingSpeech \
   -configuration Debug \
   -destination 'platform=macOS,arch=arm64' \
-  -derivedDataPath DerivedData \
+  -derivedDataPath /tmp/VibingSpeech-Tests \
   CODE_SIGNING_ALLOWED=NO \
   -only-testing:VibingSpeechTests \
   test
 ```
 
-The current tests cover model metadata, prompt generation, language normalization, word counting, live transcript buffering, short-audio ASR guarding, settings persistence, model unload delay bounds, history retention, corrupt history recovery, hotword validation, and pasteboard restoration.
+The native streaming package also has isolated tests:
 
-## Archive
+```sh
+swift test --package-path Packages/TranscribeRuntime --disable-keychain
+```
 
-Use the archive script so the Apple Silicon build settings and signing checks are applied consistently:
+The package tests cover model-free lifecycle checks and real-model streaming integration. The real-model checks are opt-in: set `VIBINGSPEECH_TEST_NEMOTRON_GGUF` to the compatible Q8_0 file and `VIBINGSPEECH_TEST_NEMOTRON_PCM` to mono 16 kHz little-endian float32 PCM. Without those fixtures, only the model-free checks run.
+
+The temporary build location avoids the macOS Documents access prompt encountered when XCTest loads the embedded native framework from a repository under Documents. The shared test action passes `--ui-testing` to keep startup independent of model downloads and microphone hardware.
+
+Tests cover settings persistence, prompt construction, ordered live audio delivery, history retention and recovery, verified GGUF caching, server port fallback, authentication, cancellation, and shutdown. The opt-in microphone test is skipped unless a test device is configured. UI automation requires a trusted macOS development-signing identity; an ad-hoc archive signature does not supply that identity.
+
+## Release archive and signing
+
+Create a release bundle with:
 
 ```sh
 ./script/archive.sh
 ```
 
-The script writes:
+The script replaces its previous outputs at `build/VibingSpeech.xcarchive` and `build/VibingSpeech.app`. It builds for arm64, signs nested code before the app using **ad-hoc signing** (`--sign -`), enables Hardened Runtime, and preserves the Audio Input and Disable Library Validation entitlements. It verifies the signature, runtime flag, both required entitlements, and embedded Version/Build against Xcode settings.
 
-- `build/VibingSpeech.xcarchive`
-- `build/VibingSpeech.app`
-
-The archive workflow passes `ARCHS=arm64`, signs nested code before the app bundle, preserves `VibingSpeech/Resources/VibingSpeech.entitlements`, enables Hardened Runtime, verifies that the runtime flag is present, and produces an Apple Silicon-only app.
-
-## Project Structure
-
-```text
-VibingSpeech/
-├── VibingSpeech.xcodeproj
-├── VibingSpeech/
-│   ├── App/              # app entry point and coordinator
-│   ├── Core/             # shared app enums and helpers
-│   ├── Models/           # domain models
-│   ├── Persistence/      # settings, history, and hotword stores
-│   ├── Resources/        # Info.plist and asset catalogs
-│   ├── Services/         # hotkey, audio, ASR, text insertion, permissions
-│   ├── Support/          # formatting helpers
-│   └── Views/            # SwiftUI views and overlay panel
-├── VibingSpeechTests/
-├── VibingSpeechUITests/
-├── docs/
-└── script/
-```
-
-## Permissions and Privacy
-
-VibingSpeech requires microphone access for recording. Accessibility permission is required for the global hotkey and for inserting text into the frontmost app.
-
-Audio is processed locally. Hotwords, settings, and transcription history are stored on device. Network access is expected when ASR or Text Processing models are downloaded from Hugging Face for first use.
+Change the app version through `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `VibingSpeech.xcodeproj`. Keep the corresponding `Info.plist` placeholders intact. This workflow creates an ad-hoc signed local bundle, not a notarized Developer ID distribution.
 
 ## Troubleshooting
 
-If the hotkey does not work, enable VibingSpeech in System Settings > Privacy & Security > Accessibility, then use Retry Hotkey Setup in the app.
+| Symptom | Check |
+| --- | --- |
+| Hotkey or paste does not work | Enable Accessibility access, then use **Retry Hotkey Setup** in Home. |
+| Selected microphone is unavailable | Reconnect it or select another input, then start a new recording. Device selection is applied at recording start. |
+| Text Processing cannot start | Check the status message and that `llama` is installed and supports Qwen3 Instruct 2507. An outdated installation reports a startup error rather than being replaced automatically. |
+| All inference ports are occupied | Free one of the listed ports or close another VibingSpeech instance, then retry. |
+| Models unload while the app is idle | Adjust **Other → Model Auto-Unload**, or set it to Off. |
+| A very brief recording produces no text | Audio shorter than the ASR minimum is discarded. |
+| XCTest waits before app startup | Use the temporary derived-data location in the Testing command. |
 
-If the displayed microphone changes but recording still appears to use another device, stop any active recording and start a new one. VibingSpeech applies the selected Core Audio device when a recording session starts and reports an error if that device is unavailable or cannot be activated.
+## Project structure
 
-If a recording starts and stops immediately, VibingSpeech discards audio that is too short for Qwen3-ASR.
+| Path | Responsibility |
+| --- | --- |
+| `VibingSpeech.xcodeproj` | Primary app, unit-test, and UI-test targets |
+| `VibingSpeech/App` | App lifecycle and recording coordinator |
+| `VibingSpeech/Services` | Microphone capture, ASR, llama server, model downloads, permissions, and paste |
+| `VibingSpeech/Persistence` | Settings, history journal, and Hotwords |
+| `VibingSpeech/Views` | SwiftUI screens and recording overlays |
+| `Packages/TranscribeRuntime` | Native transcribe.cpp model ownership, inference, and cancellation |
+| `script` | Build/run and release archive entry points |
 
-If archive fails from Xcode's GUI, use `./script/archive.sh` from Terminal so the arm64-only package build settings are applied.
+The app uses SwiftUI, AppKit, Core Audio, AVFoundation, Carbon, and ServiceManagement.
 
 ## License
 
-VibingSpeech is licensed under the MIT License. See [LICENSE](LICENSE).
-
-Please check the individual licenses for the libraries and LLM models used.
+VibingSpeech is [MIT licensed](LICENSE). Libraries and model weights have their own licenses; review them separately. Bundled transcribe.cpp notices are in [TranscribeThirdPartyNotices.txt](VibingSpeech/Resources/TranscribeThirdPartyNotices.txt).

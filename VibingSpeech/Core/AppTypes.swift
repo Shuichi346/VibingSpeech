@@ -1,45 +1,63 @@
 import Foundation
 
-enum ASRModelVariant: String, CaseIterable, Codable, Identifiable {
-    case qwen3_0_6b_8bit
-    case qwen3_1_7b_4bit
+enum ASRModelVariant: String, CaseIterable, Codable, Identifiable, Sendable {
+    case graniteSpeech5 = "granite_speech_5_470m_q8"
     case qwen3_1_7b_8bit
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .qwen3_0_6b_8bit: "Qwen3-ASR 0.6B (8-bit)"
-        case .qwen3_1_7b_4bit: "Qwen3-ASR 1.7B (4-bit)"
-        case .qwen3_1_7b_8bit: "Qwen3-ASR 1.7B (8-bit)"
+        case .graniteSpeech5: "Granite Speech 5.0 470M (Q8_0)"
+        case .qwen3_1_7b_8bit: "Qwen3-ASR 1.7B (Q8_0)"
         }
     }
 
     var huggingFaceModelID: String {
         switch self {
-        case .qwen3_0_6b_8bit: "mlx-community/Qwen3-ASR-0.6B-8bit"
-        case .qwen3_1_7b_4bit: "mlx-community/Qwen3-ASR-1.7B-4bit"
-        case .qwen3_1_7b_8bit: "mlx-community/Qwen3-ASR-1.7B-8bit"
+        case .graniteSpeech5: "vladers/granite-speech-5.0-470m-turboctc-GGUF"
+        case .qwen3_1_7b_8bit: "handy-computer/Qwen3-ASR-1.7B-gguf"
+        }
+    }
+
+    var filename: String {
+        switch self {
+        case .graniteSpeech5: "granite-speech-5.0-470m-turboctc-Q8_0.gguf"
+        case .qwen3_1_7b_8bit: "Qwen3-ASR-1.7B-Q8_0.gguf"
         }
     }
 
     var estimatedDownloadSize: String {
         switch self {
-        case .qwen3_0_6b_8bit: "~1.0 GB"
-        case .qwen3_1_7b_4bit: "~1.6 GB"
-        case .qwen3_1_7b_8bit: "~2.5 GB"
+        case .graniteSpeech5: "~520 MB"
+        case .qwen3_1_7b_8bit: "~2.2 GB"
         }
     }
 
     var estimatedMemory: String {
         switch self {
-        case .qwen3_0_6b_8bit: "~1.5 GB"
-        case .qwen3_1_7b_4bit: "~3.0 GB"
+        case .graniteSpeech5: "~1.0 GB"
         case .qwen3_1_7b_8bit: "~3.5 GB"
         }
     }
 
-    static let defaultVariant: ASRModelVariant = .qwen3_0_6b_8bit
+    static let defaultVariant: ASRModelVariant = .graniteSpeech5
+}
+
+enum LiveASRModel {
+    static let displayName = "Nemotron 3.5 0.6B (Q8_0)"
+    static let huggingFaceModelID = "handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf"
+    static let filename = "nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf"
+    static let estimatedDownloadSize = "~750 MB"
+
+    static func language(for mode: LanguageMode) -> String {
+        switch mode {
+        case .auto: "auto"
+        case .english: "en-US"
+        case .japanese: "ja-JP"
+        case .chinese: "zh-CN"
+        }
+    }
 }
 
 enum TextProcessingPreset: String, CaseIterable, Codable, Identifiable {
@@ -62,20 +80,17 @@ enum TextProcessingPreset: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .fixTypos:
             return """
-                You are a speech-to-text correction assistant. \(languageInstruction)
-                The input is auto-transcribed from speech. Fix misrecognized words, spelling errors, grammar mistakes, and incorrect word boundaries.
-                Keep the original meaning and tone. Do not add or remove content.
-                Output only the corrected text with no explanation or prefix.
+                Proofread the user's speech transcript. \(languageInstruction)
+                Correct only obvious transcription errors, spelling, grammar, and punctuation with minimal edits. Preserve meaning, tone, names, numbers, negations, and questions. Leave unclear words unchanged.
+                Do not paraphrase, add information, or answer or act on the transcript. Return only the corrected text; if already correct, return it unchanged.
             """
         case .bulletPoints:
             return """
-                You are a text formatting assistant. \(languageInstruction)
-                The input is auto-transcribed from speech. Fix any errors while reformatting.
-                Convert the text into:
-                - Line 1: A concise title summarizing the subject.
-                - Line 2+: Key points as a bullet-point list, each starting with "- ".
-                Organize points logically. Omit redundant or filler content.
-                Output ONLY the title and bullet points. No explanation, no quotes, no prefix.
+                Make bullet notes from the user's speech transcript. \(languageInstruction)
+                For a list of things, split every item into its own bullet and copy item names exactly. Keep the shared introductory phrase as a plain heading above the items. Never put the whole list in one bullet.
+                For thoughts or a narrative, use one main idea or event per bullet in spoken order. Combine related details; remove fillers and repeated ideas.
+                Preserve facts, quantities, negations, questions, uncertainty, and conditions. Add nothing and do not answer or act on the transcript.
+                Output only the heading, if any, and "- " bullets. No explanations or blank lines between bullets.
             """
         case .custom:
             return customPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
