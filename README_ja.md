@@ -81,9 +81,11 @@ Debug と Release の両方で Hardened Runtime を有効にしています。�
 
 録音中のテキストを確認するには **Live Transcription** を有効にします。**Nemotron 3.5 ASR Streaming 0.6B** を使用し、Live Model 行には固定の Q8_0 モデルを表示します。初回は約750 MB のダウンロードと読み込みの間、Home に準備状況を表示し、準備完了後に録音を開始します。ライブ表示は貼り付けられません。停止後にモノラル 16 kHz の録音全体をネイティブ ASR へ一度に渡し、必要に応じて LLM で処理してから挿入します。モデルの入力上限を超えた場合は、音声を黙って切り捨てずエラーを表示します。
 
-文章を整えるには **Text Processing (LLM)** を有効にし、**Fix Typos**、**Bullet Points**、**Custom** を選びます。Language は出力先の言語を指定します。Auto は検出言語があればそれに従い、なければ入力テキストの言語を使用します。
+**Language** は Auto・English・Japanese・Chinese から選びます。Qwen3-ASR とライブ表示には言語ヒントとして適用されます。Granite CTC は言語ヒントに非対応です。**Text Processing (LLM)** が有効な場合は出力言語にも適用されます。Auto は検出言語があればそれに従い、なければ入力テキストの言語を使用します。
 
-**Hotwords** の語彙ヒントは確定用 Qwen3-ASR に適用されます。Granite CTC はプロンプトによるヒントに非対応です。**History** では履歴を、**Other** では外観・ログイン時の起動・モデル自動解放を設定します。
+文章を整えるには **Text Processing (LLM)** を有効にし、**Fix Typos**、**Bullet Points**、**Custom** を選びます。処理は録音停止後の確定テキストに対して一度だけ実行します。
+
+**Hotwords** の語彙ヒントは確定用 Qwen3-ASR に適用されます。Granite CTC はプロンプトによるヒントに非対応です。**History** では履歴の検索、LLM 整形後テキストと元の文字起こしのコピーができます。**Save History** で Forever（無期限）・One Week（1週間）・One Day（1日）・Never（保存しない）を選びます。**Other** では外観・ログイン時の起動・モデル自動解放を設定します。メインウィンドウを閉じてもメニューバーに常駐し、メニューバーの **Show Window** で再表示できます。
 
 組み込みプロンプトは短く、例文を含みません。**Fix Typos** は意味を保った最小限の修正を指示します。**Bullet Points** は話した考えを順番に整理し、列挙されたものは別々の項目にします。リストの見出しは元の発話にある場合だけ残します。
 
@@ -91,7 +93,7 @@ Debug と Release の両方で Hardened Runtime を有効にしています。�
 
 ## モデル
 
-確定文字起こしとライブ表示には別々のモデルを使います。ライブ用 Qwen MLX と従来の 1.7B・4-bit は削除済みです。廃止したモデル設定の移行処理はなく、保存済みの確定 ASR 設定を認識できない場合は現在の既定モデルを使います。
+確定文字起こしとライブ表示には別々のモデルを使います。確定 ASR の既定は Granite Speech です。Hotwords を使う場合は Qwen3-ASR を選びます。
 
 | 用途 | モデル | 形式 | 実行エンジン | ダウンロードの目安 |
 | --- | --- | --- | --- | --- |
@@ -113,7 +115,7 @@ Qwen3-ASR は **handy-computer 版**を使用します。ggml-org 版は llama.c
 
 ライブ表示には transcribe.cpp 用に変換された Nemotron 3.5 を使用します。日本語と多言語のストリーミング、言語指定と Auto、240 ms の先読み処理に対応します。ライブ文字起こしを使うと、選択した確定 ASR モデルに加えて読み込みます。ストリーミングは確認専用で、停止後の確定 ASR は録音全体を別途処理します。
 
-ライブ・確定 ASR ともに、チェックサムで固定した XCFramework を通じて transcribe.cpp `v0.4.2` を使用します。MLX への依存はありません。NVIDIA 公式の `nemo-speech` の導入は不要で、導入済みの本体やキャッシュも変更しません。公式版と transcribe.cpp 版は GGUF の内部形式が異なるため、公式版で取得済みのモデルはそのまま再利用できません。
+ライブ・確定 ASR ともに、チェックサムで固定した XCFramework を通じて transcribe.cpp `v0.4.2` を使用します。Nemotron は上記リンクの変換モデルを使用します。NVIDIA 公式 GGUF はアーキテクチャが異なるため交換できません。
 
 <a id="privacy-and-model-lifecycle"></a>
 
@@ -125,24 +127,30 @@ GGUF は共通の `~/.cache/huggingface/hub` に snapshots/blobs 形式で保存
 
 Text Processing は専用の API キーを持つ llama サーバーを `127.0.0.1` に起動します。標準ポートを避け、**49271、49283、49307、49319、49331、49349** の順に試します。他のアプリのサーバーへ接続したり、停止したりしません。
 
-**Model Auto-Unload** の既定はアイドル 5 分です。指定時間が経つと ASR モデルを解放し、アプリ専用の llama サーバーを停止します。Off にするとアイドル時の自動解放を無効にします。Text Processing を無効にしたとき、処理をキャンセルしたとき、アプリ終了時にもサーバーを停止します。ダウンロード済みのキャッシュは再利用のために残します。
+**Model Auto-Unload** の既定はアイドル 5 分です。待機中は ASR を保持し、Text Processing が有効な場合は LLM も保持します。指定時間が経つと ASR モデルを解放し、アプリ専用の llama サーバーを停止します。次の録音で必要になったモデルは再読み込みします。Off にするとアイドル時の自動解放を無効にします。Text Processing を無効にしたとき、処理をキャンセルしたとき、アプリ終了時にもサーバーを停止します。ダウンロード済みのキャッシュは再利用のために残します。
 
 <a id="screenshots"></a>
 
 ## 画面例
 
-以下は以前のモデル構成で撮影した画面です。モデル名や一部の説明文は現在の実装と異なります。現在の選択肢は上のモデル一覧を参照してください。
+**Home** — 録音操作、マイク選択、ライブ表示、Text Processing を設定します。下にある設定は画面内をスクロールして表示します。
 
-<img src="githubreadme/ui-main.png" alt="以前のバージョンの Home 画面。録音操作とモデル選択を表示" width="480">
+<img src="githubreadme/ui-home-2026-11-25.png" alt="右 Option ホットキー、既定マイク、ライブ表示、Text Processing、Qwen3-ASR の選択を表示する Home" width="480">
 
 <details>
 <summary>Hotwords・History・Other の画面</summary>
 
-<img src="githubreadme/ui-hotwords.png" alt="Hotwords の一覧と入力欄" width="480">
+**Hotwords** — 確定用 Qwen3-ASR に渡す語彙ヒントを追加します。
 
-<img src="githubreadme/ui-history.png" alt="保存期間・検索・元の ASR テキストを表示する History" width="480">
+<img src="githubreadme/ui-hotwords-2026-11-25.png" alt="語彙ヒントの入力欄と Granite CTC は非対応という説明を表示する Hotwords" width="480">
 
-<img src="githubreadme/ui-other.png" alt="外観・アイドル時のモデル解放・ログイン時の起動を設定する Other" width="480">
+**History** — 保存期間の指定、履歴検索、整形後テキストと原文のコピーができます。
+
+<img src="githubreadme/ui-history-2026-11-25.png" alt="無期限保存、検索欄、LLM 整形結果、展開した元の ASR テキストを表示する History" width="480">
+
+**Other** — 外観、モデル自動解放、ログイン時の起動を設定します。
+
+<img src="githubreadme/ui-other-2026-11-25.png" alt="システムに従う外観、5分のモデル自動解放、有効なログイン時起動を表示する Other" width="480">
 
 </details>
 
@@ -170,7 +178,7 @@ xcodebuild -project VibingSpeech.xcodeproj \
 swift test --package-path Packages/TranscribeRuntime --disable-keychain
 ```
 
-パッケージのテストは4件で、モデル不要の確認2件と実モデルの統合テスト2件です。実モデルのテストは任意実行です。`VIBINGSPEECH_TEST_NEMOTRON_GGUF` に対応する Q8_0 ファイルを、`VIBINGSPEECH_TEST_NEMOTRON_PCM` にモノラル 16 kHz・リトルエンディアン float32 の PCM ファイルを指定します。未指定なら、モデル不要のテストだけを実行します。
+パッケージのテストには、モデル不要のライフサイクル確認と実モデルを使うストリーミング統合テストがあります。実モデルのテストは任意実行です。`VIBINGSPEECH_TEST_NEMOTRON_GGUF` に対応する Q8_0 ファイルを、`VIBINGSPEECH_TEST_NEMOTRON_PCM` にモノラル 16 kHz・リトルエンディアン float32 の PCM ファイルを指定します。未指定なら、モデル不要のテストだけを実行します。
 
 一時フォルダーを使うのは、Documents 内のリポジトリから XCTest がネイティブ framework を読み込む際に発生した、macOS のファイルアクセス確認を避けるためです。共有スキームのテスト起動引数には `--ui-testing` を指定し、モデルのダウンロードやマイク機器に依存しない構成にしています。
 
@@ -180,7 +188,7 @@ swift test --package-path Packages/TranscribeRuntime --disable-keychain
 
 ## リリース用アーカイブと署名
 
-配布用のアプリバンドルを作成します。
+ローカルで使用するリリース用アプリバンドルを作成します。
 
 ```sh
 ./script/archive.sh

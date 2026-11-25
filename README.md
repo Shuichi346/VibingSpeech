@@ -73,15 +73,17 @@ Right Option is the default hotkey; Left Control is also available. A long press
 
 Enable **Live Transcription** to review text while speaking with **Nemotron 3.5 ASR Streaming 0.6B**. The Live Model row shows the fixed Q8_0 model. On first use, Home shows model preparation while the roughly 750 MB download and loading finish; recording starts afterward. Live text is never pasted. After stopping, the complete mono 16 kHz recording is transcribed in one native batch call, then optionally processed by the LLM before insertion. Model input limits are reported as errors rather than silently truncating audio.
 
-Enable **Text Processing (LLM)** to select **Fix Typos**, **Bullet Points**, or **Custom**. The Language setting controls the requested output language; Auto follows the detected language when available, otherwise the input text.
+Set **Language** to Auto, English, Japanese, or Chinese. It supplies the language hint for Qwen3-ASR and live review; Granite CTC does not accept a language hint. With **Text Processing (LLM)** enabled, it also controls the output language. Auto follows the detected language when available, otherwise the input text.
 
-Use **Hotwords** for final Qwen3-ASR vocabulary hints; Granite CTC does not support prompt hints. Use **History** for saved dictations and **Other** for appearance, Launch at Login, and Model Auto-Unload.
+Enable **Text Processing (LLM)** to select **Fix Typos**, **Bullet Points**, or **Custom**. Processing runs once on the final transcription after recording stops.
+
+Use **Hotwords** for final Qwen3-ASR vocabulary hints; Granite CTC does not support prompt hints. In **History**, search saved dictations, copy the LLM edit or original transcription, and set **Save History** to Forever, One Week, One Day, or Never. Use **Other** for appearance, Launch at Login, and Model Auto-Unload. Closing the main window keeps the app in the menu bar; choose **Show Window** there to reopen it.
 
 Built-in prompts are short and contain no examples. **Fix Typos** requests minimal corrections while preserving meaning. **Bullet Points** condenses spoken thoughts in order, keeps enumerated items separate, and retains a list heading only when it is given in the transcript.
 
 ## Models
 
-Final ASR and live review use separate models. Qwen MLX live models and the former 1.7B 4-bit option have been removed. Retired model preferences are not migrated; an unknown saved final-ASR selection uses the current default.
+Final ASR and live review use separate models. Granite Speech is the default final ASR model; choose Qwen3-ASR when you need Hotwords.
 
 | Purpose | Model | Format | Runtime | Approximate download |
 | --- | --- | --- | --- | --- |
@@ -103,7 +105,7 @@ Qwen3-ASR must use the **handy-computer** conversion. The ggml-org conversion ha
 
 Live review uses the transcribe.cpp conversion of Nemotron 3.5, with Japanese and multilingual streaming, explicit language selection or Auto, and 240 ms lookahead. It loads when live transcription is used, alongside the selected final ASR model. The stream remains review-only; the final ASR model processes the complete recording separately after stop.
 
-Both live and final ASR use transcribe.cpp `v0.4.2` through a checksum-pinned XCFramework. The app no longer depends on MLX. NVIDIA's official `nemo-speech` installation is not required or modified. Its GGUF format differs from the transcribe.cpp conversion, so an existing official model download cannot be reused directly.
+Both live and final ASR use transcribe.cpp `v0.4.2` through a checksum-pinned XCFramework. Use the linked Nemotron conversion: NVIDIA’s official GGUF has a different architecture and is not interchangeable with it.
 
 ## Privacy and model lifecycle
 
@@ -113,22 +115,28 @@ GGUF files use the shared `~/.cache/huggingface/hub` snapshots/blobs cache with 
 
 Text Processing starts its own llama server on `127.0.0.1` with a private API key. It tries ports **49271, 49283, 49307, 49319, 49331, and 49349**, avoiding llama defaults and leaving other applications' servers untouched.
 
-**Model Auto-Unload** defaults to five idle minutes. At the configured timeout, ASR models unload and the owned llama server stops. Setting the delay to Off disables this idle timeout. The server also stops when Text Processing is disabled, processing is canceled, or the app exits. Downloaded cache files remain available for later use.
+**Model Auto-Unload** defaults to five idle minutes. During standby, ASR stays loaded; when Text Processing is enabled, its LLM also stays loaded. At the configured timeout, ASR models unload and the owned llama server stops. Models load again when needed for the next recording. Setting the delay to Off disables this idle timeout. The server also stops when Text Processing is disabled, processing is canceled, or the app exits. Downloaded cache files remain available for later use.
 
 ## Screenshots
 
-These screenshots show an earlier model configuration. Model names and some explanatory text differ from the current implementation; use the Models section above for current selections.
+**Home** — recording controls, microphone selection, live review, and optional Text Processing. Scroll within the pane to reach the remaining settings.
 
-<img src="githubreadme/ui-main.png" alt="Home settings with recording controls and model selection in an earlier version" width="480">
+<img src="githubreadme/ui-home-2026-11-25.png" alt="Home with Right Option hotkey, System Default microphone, Live Transcription, Text Processing, and Qwen3-ASR selection" width="480">
 
 <details>
 <summary>Hotwords, History, and Other settings</summary>
 
-<img src="githubreadme/ui-hotwords.png" alt="Hotwords list and entry field" width="480">
+**Hotwords** — add vocabulary hints for final Qwen3-ASR transcription.
 
-<img src="githubreadme/ui-history.png" alt="History with retention, search, and original ASR text" width="480">
+<img src="githubreadme/ui-hotwords-2026-11-25.png" alt="Hotwords entry field and explanation that Granite CTC does not support hints" width="480">
 
-<img src="githubreadme/ui-other.png" alt="Appearance, idle unloading, and Launch at Login settings" width="480">
+**History** — choose retention, search dictations, and copy edited or original text.
+
+<img src="githubreadme/ui-history-2026-11-25.png" alt="History with Forever retention, search, LLM edits, and expanded original ASR text" width="480">
+
+**Other** — appearance, idle model unloading, and Launch at Login.
+
+<img src="githubreadme/ui-other-2026-11-25.png" alt="Other settings with System appearance, five-minute Model Auto-Unload, and Launch at Login enabled" width="480">
 
 </details>
 
@@ -154,7 +162,7 @@ The native streaming package also has isolated tests:
 swift test --package-path Packages/TranscribeRuntime --disable-keychain
 ```
 
-The four package tests include two model-free checks and two real-model integration checks. The real-model checks are opt-in: set `VIBINGSPEECH_TEST_NEMOTRON_GGUF` to the compatible Q8_0 file and `VIBINGSPEECH_TEST_NEMOTRON_PCM` to mono 16 kHz little-endian float32 PCM. Without those fixtures, only the model-free checks run.
+The package tests cover model-free lifecycle checks and real-model streaming integration. The real-model checks are opt-in: set `VIBINGSPEECH_TEST_NEMOTRON_GGUF` to the compatible Q8_0 file and `VIBINGSPEECH_TEST_NEMOTRON_PCM` to mono 16 kHz little-endian float32 PCM. Without those fixtures, only the model-free checks run.
 
 The temporary build location avoids the macOS Documents access prompt encountered when XCTest loads the embedded native framework from a repository under Documents. The shared test action passes `--ui-testing` to keep startup independent of model downloads and microphone hardware.
 
