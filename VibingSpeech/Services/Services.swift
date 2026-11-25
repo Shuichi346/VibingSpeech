@@ -824,7 +824,7 @@ enum TextProcessingServiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .modelUnavailable:
-            "Qwen3.5 text processing could not be loaded."
+            "The text processing model could not be loaded."
         case .emptyPrompt:
             "A custom text processing prompt is required."
         case .emptyResult:
@@ -1080,7 +1080,7 @@ actor TextProcessingBackend {
         try Task.checkCancellation()
         guard generation == requestID else { throw CancellationError() }
         try await server.start(modelURL: url, additionalArguments: [
-            "--ctx-size", "32768", "--reasoning", "off", "--parallel", "1"
+            "--ctx-size", "32768"
         ])
         guard generation == requestID else { throw CancellationError() }
     }
@@ -1114,8 +1114,7 @@ actor TextProcessingBackend {
             "top_k": TextProcessingService.generationTopK,
             "min_p": TextProcessingService.generationMinP,
             "repeat_penalty": TextProcessingService.generationRepetitionPenalty,
-            "presence_penalty": TextProcessingService.generationPresencePenalty,
-            "chat_template_kwargs": ["enable_thinking": false]
+            "presence_penalty": TextProcessingService.generationPresencePenalty
         ]
     }
 
@@ -1176,15 +1175,15 @@ final class LaunchAtLoginService: ObservableObject {
 
 @MainActor
 final class TextProcessingService: ObservableObject {
-    nonisolated static let modelIdentifier = "unsloth/Qwen3.5-2B-GGUF"
-    nonisolated static let modelFilename = "Qwen3.5-2B-Q8_0.gguf"
+    nonisolated static let modelIdentifier = "unsloth/Qwen3-4B-Instruct-2507-GGUF"
+    nonisolated static let modelFilename = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
     nonisolated static let maxOutputTokens = 16_384
-    // Qwen3.5's recommended non-thinking sampling for text tasks.
-    nonisolated static let generationTemperature: Float = 1
-    nonisolated static let generationTopP: Float = 1
+    // Qwen3 Instruct 2507 is non-thinking; avoid presence penalties when copying dictated text.
+    nonisolated static let generationTemperature: Float = 0.7
+    nonisolated static let generationTopP: Float = 0.8
     nonisolated static let generationTopK = 20
     nonisolated static let generationMinP: Float = 0
-    nonisolated static let generationPresencePenalty: Float = 2
+    nonisolated static let generationPresencePenalty: Float = 0
     nonisolated static let generationRepetitionPenalty: Float = 1
 
     @Published private(set) var isReady = false
@@ -1239,7 +1238,8 @@ final class TextProcessingService: ObservableObject {
         let generation = loadGeneration
         try await loadIfNeeded(generation: generation)
         guard enabled, loadGeneration == generation, isReady else { throw CancellationError() }
-        return try await backend.process(input, systemPrompt: systemPrompt)
+        let output = try await backend.process(input, systemPrompt: systemPrompt)
+        return preset == .bulletPoints ? BulletPointFormatter.normalized(output) : output
     }
 
     func unloadAfterIdle() async {

@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Normalized Bullet Points markers and spacing without rewriting the model’s text, including note lines returned without bullet markers.
 - Fixed signed app startup with the bundled CTranscribe framework by adding the library-validation exception required for ad-hoc signatures under Hardened Runtime. Enabled signing in the Debug run script, verified bundle signatures, and checked sustained startup; added archive entitlement checks.
 - Fixed Auto language selection for native Nemotron streaming while preserving explicit language choices.
 
@@ -13,6 +14,8 @@
 
 ### Changed
 
+- Switched Text Processing from Qwen3.5 2B Q8_0 to Qwen3 4B Instruct 2507 Q4_K_M after comparison, applied its recommended sampling settings with presence penalty disabled, and removed redundant thinking-mode configuration.
+- Rewrote the built-in Text Processing prompts in concise English without examples: Fix Typos requests minimal corrections, and Bullet Points preserves spoken ideas and list items with a heading only when the source introduces one.
 - Replaced only the Text Processing model with Qwen3.5 2B Q8_0 from Unsloth, retaining non-thinking-only generation and applying its recommended text sampling parameters.
 - Replaced live Qwen3-ASR MLX inference with Nemotron 3.5 ASR Streaming 0.6B Q8_0 through the bundled transcribe.cpp runtime, with Japanese/Auto language support and a fixed Live Model display.
 - Preserved native committed/tentative text boundaries in the live overlay and finalized buffered audio before the separate complete-recording ASR pass.

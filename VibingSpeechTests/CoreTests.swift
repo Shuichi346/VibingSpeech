@@ -36,7 +36,7 @@ final class CoreTests: XCTestCase {
         let prompt = TextProcessingPreset.fixTypos.systemPrompt(detectedLanguage: "ja", selectedLanguage: .english)
         XCTAssertTrue(prompt.contains("Write the output in English."))
         XCTAssertFalse(prompt.contains("Write the output in Japanese."))
-        XCTAssertTrue(prompt.contains("Fix misrecognized words"))
+        XCTAssertTrue(prompt.contains("Correct only obvious transcription errors"))
     }
 
     func testPromptGenerationUsesDetectedLanguageOnlyForAuto() {
@@ -55,6 +55,16 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(LanguageMode.normalized("zh"), .chinese)
         XCTAssertEqual(LanguageMode.normalized("language ja"), .japanese)
         XCTAssertEqual(LanguageMode.normalized("unknown"), .auto)
+    }
+
+    func testBulletPointFormattingMarksPlainNotesWithoutAddingHeading() {
+        let output = BulletPointFormatter.normalized("Maybe next week.  \n\nOnly if the images are ready.\nKeep the price unchanged.")
+        XCTAssertEqual(output, "- Maybe next week.\n- Only if the images are ready.\n- Keep the price unchanged.")
+    }
+
+    func testBulletPointFormattingKeepsHeadingAndNormalizesMarkers() {
+        let output = BulletPointFormatter.normalized("買い物  \n\n* 牛乳2本\n\n・卵6個\n- パンは買わない  ")
+        XCTAssertEqual(output, "買い物\n\n- 牛乳2本\n- 卵6個\n- パンは買わない")
     }
 
     func testASRLanguageHints() {
@@ -98,18 +108,19 @@ final class CoreTests: XCTestCase {
     }
 
     func testTextProcessingSendsNonThinkingQwenTextRequest() throws {
-        XCTAssertEqual(TextProcessingService.modelIdentifier, "unsloth/Qwen3.5-2B-GGUF")
-        XCTAssertEqual(TextProcessingService.modelFilename, "Qwen3.5-2B-Q8_0.gguf")
+        XCTAssertEqual(TextProcessingService.modelIdentifier, "unsloth/Qwen3-4B-Instruct-2507-GGUF")
+        XCTAssertEqual(TextProcessingService.modelFilename, "Qwen3-4B-Instruct-2507-Q4_K_M.gguf")
         let body = TextProcessingBackend.requestBody(text: "helo", systemPrompt: "Fix typos.")
         let data = try JSONSerialization.data(withJSONObject: body)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertEqual((json["temperature"] as? NSNumber)?.floatValue, 1)
-        XCTAssertEqual((json["top_p"] as? NSNumber)?.floatValue, 1)
+        XCTAssertEqual(json["max_tokens"] as? Int, 16_384)
+        XCTAssertEqual((json["temperature"] as? NSNumber)?.floatValue, 0.7)
+        XCTAssertEqual((json["top_p"] as? NSNumber)?.floatValue, 0.8)
         XCTAssertEqual(json["top_k"] as? Int, 20)
         XCTAssertEqual((json["min_p"] as? NSNumber)?.floatValue, 0)
-        XCTAssertEqual((json["presence_penalty"] as? NSNumber)?.floatValue, 2)
+        XCTAssertEqual((json["presence_penalty"] as? NSNumber)?.floatValue, 0)
         XCTAssertEqual((json["repeat_penalty"] as? NSNumber)?.floatValue, 1)
-        XCTAssertEqual((json["chat_template_kwargs"] as? [String: Bool])?["enable_thinking"], false)
+        XCTAssertNil(json["chat_template_kwargs"], "Instruct 2507 has no thinking mode to disable")
         let messages = try XCTUnwrap(json["messages"] as? [[String: String]])
         XCTAssertEqual(messages, [["role": "system", "content": "Fix typos."], ["role": "user", "content": "helo"]])
     }

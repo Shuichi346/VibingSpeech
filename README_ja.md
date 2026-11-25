@@ -9,7 +9,7 @@
 
 # VibingSpeech
 
-Apple Silicon Mac 向けのローカル音声入力アプリです。ホットキーで録音し、Granite Speech または Qwen3-ASR で文字起こしします。必要に応じて Qwen3.5 で文章を整え、使用中のアプリへ貼り付けます。
+Apple Silicon Mac 向けのローカル音声入力アプリです。ホットキーで録音し、Granite Speech または Qwen3-ASR で文字起こしします。必要に応じて Qwen3 Instruct 2507 で文章を整え、使用中のアプリへ貼り付けます。
 
 メニューバーに常駐し、音声とテキストの推論は Mac 内で実行します。必要なモデルは初回使用時にダウンロードします。
 
@@ -85,6 +85,8 @@ Debug と Release の両方で Hardened Runtime を有効にしています。�
 
 **Hotwords** の語彙ヒントは確定用 Qwen3-ASR に適用されます。Granite CTC はプロンプトによるヒントに非対応です。**History** では履歴を、**Other** では外観・ログイン時の起動・モデル自動解放を設定します。
 
+組み込みプロンプトは短く、例文を含みません。**Fix Typos** は意味を保った最小限の修正を指示します。**Bullet Points** は話した考えを順番に整理し、列挙されたものは別々の項目にします。リストの見出しは元の発話にある場合だけ残します。
+
 <a id="models"></a>
 
 ## モデル
@@ -96,16 +98,16 @@ Debug と Release の両方で Hardened Runtime を有効にしています。�
 | 確定 ASR・既定 | [Granite Speech 5.0 470M TurboCTC](https://huggingface.co/vladers/granite-speech-5.0-470m-turboctc-GGUF) | GGUF Q8_0 | transcribe.cpp | 520 MB |
 | 確定 ASR | [Qwen3-ASR 1.7B](https://huggingface.co/handy-computer/Qwen3-ASR-1.7B-gguf) | GGUF Q8_0 | transcribe.cpp | 2.2 GB |
 | ライブ表示 | [Nemotron 3.5 ASR Streaming 0.6B](https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf) | GGUF Q8_0 | transcribe.cpp | 750 MB |
-| 任意の Text Processing | [Qwen3.5 2B](https://huggingface.co/unsloth/Qwen3.5-2B-GGUF) | GGUF Q8_0 | llama.cpp・非推論モード | 2.0 GB |
+| 任意の Text Processing | [Qwen3 4B Instruct 2507](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | GGUF Q4_K_M | llama.cpp・非推論モード | 2.5 GB |
 
 使用する GGUF ファイルは以下のとおりです。
 
 - `granite-speech-5.0-470m-turboctc-Q8_0.gguf`
 - `Qwen3-ASR-1.7B-Q8_0.gguf`
 - `nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf`
-- `Qwen3.5-2B-Q8_0.gguf`
+- `Qwen3-4B-Instruct-2507-Q4_K_M.gguf`
 
-Text Processing は非推論のテキスト生成のみを使用します。設定は `temperature=1.0`、`top_p=1.0`、`top_k=20`、`min_p=0.0`、`presence_penalty=2.0`、`repeat_penalty=1.0`（llama.cpp での repetition penalty の名前）です。`--reasoning off` と `chat_template_kwargs.enable_thinking=false` の両方で推論を無効化し、[モデル推奨の非推論テキスト用設定](https://huggingface.co/Qwen/Qwen3.5-2B#best-practices)に合わせています。
+Text Processing は非推論専用の Instruct 2507 モデルを使用します。設定は `temperature=0.7`、`top_p=0.8`、`top_k=20`、`min_p=0.0`、`presence_penalty=0.0`、`repeat_penalty=1.0`（llama.cpp での repetition penalty の名前）で、出力上限は 16,384 トークンです。推論モードを切り替える指定は不要です。[モデル推奨設定](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507#best-practices)に基づいています。
 
 Qwen3-ASR は **handy-computer 版**を使用します。ggml-org 版は llama.cpp 向けの異なる構造のため、この transcribe.cpp 用モデルとは交換できません。
 
@@ -196,7 +198,7 @@ swift test --package-path Packages/TranscribeRuntime --disable-keychain
 | --- | --- |
 | ホットキーや貼り付けが動かない | アクセシビリティ権限を有効にし、Home の **Retry Hotkey Setup** を使用します。 |
 | 選択したマイクが使えない | 再接続するか別の入力を選び、録音し直します。デバイス選択は録音開始時に適用します。 |
-| Text Processing が起動しない | 状態表示を確認し、`llama` が導入済みで Qwen3.5 に対応しているか確認します。古いものは自動更新せず、起動エラーを表示します。 |
+| Text Processing が起動しない | 状態表示を確認し、`llama` が導入済みで Qwen3 Instruct 2507 に対応しているか確認します。古いものは自動更新せず、起動エラーを表示します。 |
 | 推論用ポートがすべて使用中 | 候補ポートのいずれかを空けるか、別の VibingSpeech を終了して再試行します。 |
 | アイドル中にモデルが解放される | **Other → Model Auto-Unload** の時間を変更するか、Off にします。 |
 | ごく短い録音で文字が出ない | ASR の最小長に満たない音声は破棄します。 |

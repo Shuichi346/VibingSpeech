@@ -9,7 +9,7 @@
 
 # VibingSpeech
 
-Local voice dictation for Apple Silicon Macs. Record from a global hotkey, transcribe with Granite Speech or Qwen3-ASR, optionally refine the text with Qwen3.5, and paste it into the app you are using.
+Local voice dictation for Apple Silicon Macs. Record from a global hotkey, transcribe with Granite Speech or Qwen3-ASR, optionally refine the text with Qwen3 Instruct 2507, and paste it into the app you are using.
 
 VibingSpeech lives in the menu bar. Audio and text inference run on your Mac; models download when first needed.
 
@@ -77,6 +77,8 @@ Enable **Text Processing (LLM)** to select **Fix Typos**, **Bullet Points**, or 
 
 Use **Hotwords** for final Qwen3-ASR vocabulary hints; Granite CTC does not support prompt hints. Use **History** for saved dictations and **Other** for appearance, Launch at Login, and Model Auto-Unload.
 
+Built-in prompts are short and contain no examples. **Fix Typos** requests minimal corrections while preserving meaning. **Bullet Points** condenses spoken thoughts in order, keeps enumerated items separate, and retains a list heading only when it is given in the transcript.
+
 ## Models
 
 Final ASR and live review use separate models. Qwen MLX live models and the former 1.7B 4-bit option have been removed. Retired model preferences are not migrated; an unknown saved final-ASR selection uses the current default.
@@ -86,16 +88,16 @@ Final ASR and live review use separate models. Qwen MLX live models and the form
 | Final ASR, default | [Granite Speech 5.0 470M TurboCTC](https://huggingface.co/vladers/granite-speech-5.0-470m-turboctc-GGUF) | GGUF Q8_0 | transcribe.cpp | 520 MB |
 | Final ASR | [Qwen3-ASR 1.7B](https://huggingface.co/handy-computer/Qwen3-ASR-1.7B-gguf) | GGUF Q8_0 | transcribe.cpp | 2.2 GB |
 | Live review | [Nemotron 3.5 ASR Streaming 0.6B](https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf) | GGUF Q8_0 | transcribe.cpp | 750 MB |
-| Optional Text Processing | [Qwen3.5 2B](https://huggingface.co/unsloth/Qwen3.5-2B-GGUF) | GGUF Q8_0 | llama.cpp, non-thinking | 2.0 GB |
+| Optional Text Processing | [Qwen3 4B Instruct 2507](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | GGUF Q4_K_M | llama.cpp, non-thinking | 2.5 GB |
 
 The GGUF filenames are:
 
 - `granite-speech-5.0-470m-turboctc-Q8_0.gguf`
 - `Qwen3-ASR-1.7B-Q8_0.gguf`
 - `nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf`
-- `Qwen3.5-2B-Q8_0.gguf`
+- `Qwen3-4B-Instruct-2507-Q4_K_M.gguf`
 
-Text Processing uses only non-thinking text generation with `temperature=1.0`, `top_p=1.0`, `top_k=20`, `min_p=0.0`, `presence_penalty=2.0`, and `repeat_penalty=1.0` (llama.cpp’s name for repetition penalty). Thinking is disabled through both `--reasoning off` and `chat_template_kwargs.enable_thinking=false`. These match the [model’s recommended non-thinking text settings](https://huggingface.co/Qwen/Qwen3.5-2B#best-practices).
+Text Processing uses the non-thinking-only Instruct 2507 model with `temperature=0.7`, `top_p=0.8`, `top_k=20`, `min_p=0.0`, `presence_penalty=0.0`, and `repeat_penalty=1.0` (llama.cpp’s name for repetition penalty). Output is capped at 16,384 tokens. No thinking-mode switch is needed. See the [model’s recommended settings](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507#best-practices).
 
 Qwen3-ASR must use the **handy-computer** conversion. The ggml-org conversion has a different layout intended for llama.cpp and is not interchangeable with this transcribe.cpp model.
 
@@ -176,7 +178,7 @@ Change the app version through `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`
 | --- | --- |
 | Hotkey or paste does not work | Enable Accessibility access, then use **Retry Hotkey Setup** in Home. |
 | Selected microphone is unavailable | Reconnect it or select another input, then start a new recording. Device selection is applied at recording start. |
-| Text Processing cannot start | Check the status message and that `llama` is installed and supports Qwen3.5. An outdated installation reports a startup error rather than being replaced automatically. |
+| Text Processing cannot start | Check the status message and that `llama` is installed and supports Qwen3 Instruct 2507. An outdated installation reports a startup error rather than being replaced automatically. |
 | All inference ports are occupied | Free one of the listed ports or close another VibingSpeech instance, then retry. |
 | Models unload while the app is idle | Adjust **Other → Model Auto-Unload**, or set it to Off. |
 | A very brief recording produces no text | Audio shorter than the ASR minimum is discarded. |

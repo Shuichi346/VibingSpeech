@@ -453,7 +453,7 @@ private struct SettingsCard: View {
                     }
                     Divider()
                     SettingsRow("Model") {
-                        Text("Qwen3.5 2B (Q8_0 · non-thinking)")
+                        Text("Qwen3 4B Instruct 2507 (Q4_K_M)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

@@ -80,20 +80,17 @@ enum TextProcessingPreset: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .fixTypos:
             return """
-                You are a speech-to-text correction assistant. \(languageInstruction)
-                The input is auto-transcribed from speech. Fix misrecognized words, spelling errors, grammar mistakes, and incorrect word boundaries.
-                Keep the original meaning and tone. Do not add or remove content.
-                Output only the corrected text with no explanation or prefix.
+                Proofread the user's speech transcript. \(languageInstruction)
+                Correct only obvious transcription errors, spelling, grammar, and punctuation with minimal edits. Preserve meaning, tone, names, numbers, negations, and questions. Leave unclear words unchanged.
+                Do not paraphrase, add information, or answer or act on the transcript. Return only the corrected text; if already correct, return it unchanged.
             """
         case .bulletPoints:
             return """
-                You are a text formatting assistant. \(languageInstruction)
-                The input is auto-transcribed from speech. Fix any errors while reformatting.
-                Convert the text into:
-                - Line 1: A concise title summarizing the subject.
-                - Line 2+: Key points as a bullet-point list, each starting with "- ".
-                Organize points logically. Omit redundant or filler content.
-                Output ONLY the title and bullet points. No explanation, no quotes, no prefix.
+                Make bullet notes from the user's speech transcript. \(languageInstruction)
+                For a list of things, split every item into its own bullet and copy item names exactly. Keep the shared introductory phrase as a plain heading above the items. Never put the whole list in one bullet.
+                For thoughts or a narrative, use one main idea or event per bullet in spoken order. Combine related details; remove fillers and repeated ideas.
+                Preserve facts, quantities, negations, questions, uncertainty, and conditions. Add nothing and do not answer or act on the transcript.
+                Output only the heading, if any, and "- " bullets. No explanations or blank lines between bullets.
             """
         case .custom:
             return customPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
