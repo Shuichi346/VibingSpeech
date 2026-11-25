@@ -31,8 +31,10 @@ done
   -configuration "$CONFIGURATION" \
   -destination "platform=macOS,arch=arm64" \
   -derivedDataPath "$DERIVED_DATA" \
-  CODE_SIGNING_ALLOWED=NO \
   build
+
+/usr/bin/codesign --verify --strict --verbose=2 "$APP_PATH/Contents/Frameworks/CTranscribe.framework"
+/usr/bin/codesign --verify --strict --verbose=2 "$APP_PATH"
 
 open_app() {
   /usr/bin/open -n "$APP_PATH"
@@ -57,6 +59,14 @@ case "$MODE" in
     open_app
     for _ in {1..20}; do
       if /usr/bin/pgrep -x "$APP_NAME" >/dev/null; then
+        # A process can appear briefly before dyld aborts during library loading.
+        for _ in {1..20}; do
+          sleep 0.25
+          if ! /usr/bin/pgrep -x "$APP_NAME" >/dev/null; then
+            echo "$APP_NAME exited during startup" >&2
+            exit 1
+          fi
+        done
         echo "$APP_NAME is running"
         exit 0
       fi

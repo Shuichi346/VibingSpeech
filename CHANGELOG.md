@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Fixed signed app startup with the bundled CTranscribe framework by adding the library-validation exception required for ad-hoc signatures under Hardened Runtime. Enabled signing in the Debug run script, verified bundle signatures, and checked sustained startup; added archive entitlement checks.
 - Fixed Auto language selection for native Nemotron streaming while preserving explicit language choices.
 
 ### Added

@@ -60,7 +60,9 @@ Apple Silicon Mac 向けのローカル音声入力アプリです。ホット�
 ./script/build_and_run.sh --verify
 ```
 
-このスクリプトは起動中の VibingSpeech を停止し、`VibingSpeech.xcodeproj` から Debug アプリをビルド・起動して、プロセスの存在を確認します。出力先は `DerivedData/` です。アプリ本体は Xcode プロジェクトでビルドし、ローカル Swift パッケージはネイティブ ASR のラッパーを提供します。
+このスクリプトは起動中の VibingSpeech を停止し、`VibingSpeech.xcodeproj` から Debug アプリをアドホック署名付きでビルドします。アプリとネイティブフレームワークの署名を検証してから起動し、5秒間の稼働を確認します。出力先は `DerivedData/` です。アプリ本体は Xcode プロジェクトでビルドし、ローカル Swift パッケージはネイティブ ASR のラッパーを提供します。
+
+Debug と Release の両方で Hardened Runtime を有効にしています。アドホック署名には Team ID がないため、内蔵の `CTranscribe.framework` を読み込めるよう Disable Library Validation entitlement を付与しています。
 
 ビルドスクリプトはパッケージ認証に netrc を指定し、公開の依存関係を取得するときのキーチェーン確認を避けます。
 
@@ -180,7 +182,7 @@ swift test --package-path Packages/TranscribeRuntime --disable-keychain
 ./script/archive.sh
 ```
 
-既存の出力先 `build/VibingSpeech.xcarchive` と `build/VibingSpeech.app` は置き換えます。arm64 向けにビルドし、内部コードからアプリ本体の順に**アドホック署名**（`--sign -`）を行います。Hardened Runtime と Audio Input entitlement を維持し、署名・runtime フラグ・アプリ内の Version／Build と Xcode 設定の一致を検証します。
+既存の出力先 `build/VibingSpeech.xcarchive` と `build/VibingSpeech.app` は置き換えます。arm64 向けにビルドし、内部コードからアプリ本体の順に**アドホック署名**（`--sign -`）を行います。Hardened Runtime と Audio Input・Disable Library Validation の両 entitlement を維持し、署名・runtime フラグ・必須の両 entitlement・アプリ内の Version／Build と Xcode 設定の一致を検証します。
 
 バージョンは `VibingSpeech.xcodeproj` の `MARKETING_VERSION` と `CURRENT_PROJECT_VERSION` で変更し、`Info.plist` の対応する変数参照は維持します。この手順で生成するのはアドホック署名済みのローカル用バンドルであり、Developer ID 署名・公証済みの配布物ではありません。
 

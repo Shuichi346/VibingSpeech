@@ -54,7 +54,9 @@ Clone or download this repository, then run from its root:
 ./script/build_and_run.sh --verify
 ```
 
-The script stops any running VibingSpeech process, builds the Debug app through `VibingSpeech.xcodeproj`, launches it, and checks that it is running. Build products are stored in `DerivedData/`. The Xcode project is the primary build entry point; the local Swift package supplies the native ASR wrapper.
+The script stops any running VibingSpeech process, builds the Debug app through `VibingSpeech.xcodeproj` with ad-hoc signing, verifies the app and native framework signatures, launches it, and checks that it stays running for five seconds. Build products are stored in `DerivedData/`. The Xcode project is the primary build entry point; the local Swift package supplies the native ASR wrapper.
+
+Debug and Release keep Hardened Runtime enabled. Ad-hoc signatures have no Team ID, so the app includes the Disable Library Validation entitlement to load its bundled `CTranscribe.framework`.
 
 Build scripts select the netrc package authorization provider to avoid Keychain prompts when fetching public dependencies.
 
@@ -162,7 +164,7 @@ Create a release bundle with:
 ./script/archive.sh
 ```
 
-The script replaces its previous outputs at `build/VibingSpeech.xcarchive` and `build/VibingSpeech.app`. It builds for arm64, signs nested code before the app using **ad-hoc signing** (`--sign -`), enables Hardened Runtime, and preserves the Audio Input entitlement. It verifies the signature, runtime flag, and embedded Version/Build against Xcode settings.
+The script replaces its previous outputs at `build/VibingSpeech.xcarchive` and `build/VibingSpeech.app`. It builds for arm64, signs nested code before the app using **ad-hoc signing** (`--sign -`), enables Hardened Runtime, and preserves the Audio Input and Disable Library Validation entitlements. It verifies the signature, runtime flag, both required entitlements, and embedded Version/Build against Xcode settings.
 
 Change the app version through `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `VibingSpeech.xcodeproj`. Keep the corresponding `Info.plist` placeholders intact. This workflow creates an ad-hoc signed local bundle, not a notarized Developer ID distribution.
 
